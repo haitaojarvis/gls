@@ -1,0 +1,16 @@
+{
+  "Lua.diagnostics.globals": [
+    "GetRunningTime",
+    "Sleep",
+    "PressKey",
+    "ReleaseKey",
+    "PressAndReleaseKey",
+    "PressMouseButton",
+    "ReleaseMouseButton",
+    "PressAndReleaseMouseButton",
+    "MoveMouseToVirtual",
+    "IsMouseButtonPressed",
+    "IsModifierPressed",
+    "OutputLogMessage"
+  ]
+}
