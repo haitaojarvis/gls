@@ -822,34 +822,41 @@ function Builds.Wiz:VryLollipop()
   end
 end
 
--- 钻石体肤塔拉夏陨石
+-- 塔拉夏陨石(黑洞/冰霜新星)
 function Builds.Wiz:TalRashaMeteor()
-  -- 定义动作列表, 开始循环
   Gm.actions = {
-    Action:new({ interval = 1000 * 60 * 5, key = Keys.ActionBarSkill_1 }),
-    Action:new({ interval = 1000 * 60 * 5, key = Keys.ActionBarSkill_2 }),
-    -- 钻石体肤
-    Action:new({ interval = Timing.MS_20F * 3, key = Keys.ActionBarSkill_4 }),
+    -- 黑洞(Black Hole)/冰霜新星(Frost Nova)
+    -- Action:new({ interval = 1000, key = Keys.ActionBarSkill_3 }),
     Action:new({
       interval = 1000 * 60 * 5,
       func = function()
-        Gm:pressKey(Keys.ForceStand)
+        Gm:startForceStand()
+        Gm:sleep(Timing.MS_3F)
         Gm:clickKey(Mouse.Left)
-        Gm:releaseKey(Keys.ForceStand)
+        Gm:clickKey(Keys.ActionBarSkill_1)
+        Gm:clickKey(Keys.ActionBarSkill_4)
+        Gm:stopForceStand()
       end
     }),
   }
 end
 
--- 材料塔拉夏陨石
-function Builds.Wiz:HappyTalRashaMeteor()
-  -- 定义动作列表, 开始循环
+-- 钻石体肤塔拉夏陨石
+function Builds.Wiz:TalRashaMeteorWithDiamondSkin()
   Gm.actions = {
-    Action:new({ interval = 1000 * 60 * 5, key = Keys.ActionBarSkill_1 }),
-    Action:new({ interval = 1000 * 60 * 5, key = Keys.ActionBarSkill_2 }),
-    Action:new({ interval = 1000 * 60 * 5, key = Keys.ActionBarSkill_4 }),
-    Action:new({ interval = 1000 * 60 * 5, key = Mouse.Right }),
-    Action:new({ interval = Timing.MS_6F, key = Mouse.Left }),
+    -- 钻石体肤(Diamond Skin)
+    Action:new({ interval = 1000, key = Keys.ActionBarSkill_3 }),
+    Action:new({
+      interval = 1000 * 60 * 5,
+      func = function()
+        Gm:startForceStand()
+        Gm:sleep(Timing.MS_3F)
+        Gm:clickKey(Mouse.Left)
+        Gm:clickKey(Keys.ActionBarSkill_1)
+        Gm:clickKey(Keys.ActionBarSkill_4)
+        Gm:stopForceStand()
+      end
+    }),
   }
 end
 
@@ -882,9 +889,7 @@ function Builds.DH:DevouringStrafe()
     Action:new({
       interval = 5000,
       func = function()
-        if Gm.data.strafe then
-          Gm:clickKey(Keys.ActionBarSkill_1)
-        end
+        Gm:clickKey(Keys.ActionBarSkill_1)
       end,
       shouldLater = function()
         return Gm.data.strafe == false
@@ -1140,10 +1145,14 @@ end)
 
 -- 侧后键
 Gm:setMouseAssignment(4, function()
-  Builds.Monk:LoDWoL()
+  Builds.DH:DevouringStrafe()
 end)
 
 -- 侧前键
 Gm:setMouseAssignment(5, function()
-  Builds.DH:ImpaleStrafe()
+  if Gm:isControlKeyPressed(ControlKeys.Alt) then
+    Builds.Wiz:TalRashaMeteor()
+  else
+    Builds.Wiz:TalRashaMeteorWithDiamondSkin()
+  end
 end)
