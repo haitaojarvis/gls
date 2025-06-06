@@ -822,29 +822,11 @@ function Builds.Wiz:VryLollipop()
   end
 end
 
--- 塔拉夏陨石(黑洞/冰霜新星)
-function Builds.Wiz:TalRashaMeteor()
-  Gm.actions = {
-    -- 黑洞(Black Hole)/冰霜新星(Frost Nova)
-    -- Action:new({ interval = 1000, key = Keys.ActionBarSkill_3 }),
-    Action:new({
-      interval = 1000 * 60 * 5,
-      func = function()
-        Gm:startForceStand()
-        Gm:sleep(Timing.MS_3F)
-        Gm:clickKey(Mouse.Left)
-        Gm:clickKey(Keys.ActionBarSkill_1)
-        Gm:clickKey(Keys.ActionBarSkill_4)
-        Gm:stopForceStand()
-      end
-    }),
-  }
-end
-
 -- 钻石体肤塔拉夏陨石
 function Builds.Wiz:TalRashaMeteorWithDiamondSkin()
   Gm.actions = {
     -- 钻石体肤(Diamond Skin)
+    -- 带 “黑洞(Black Hole)” 或 “冰霜新星(Frost Nova)” 的玩法，注释掉这行手动触发就好
     Action:new({ interval = 1000, key = Keys.ActionBarSkill_3 }),
     Action:new({
       interval = 1000 * 60 * 5,
@@ -1140,19 +1122,15 @@ end
 -- =============================================================================
 -- DPI 切换键
 Gm:setMouseAssignment(6, function()
-  Builds.Crus:AoVFist()
+  Builds.DH:DevouringStrafe()
 end)
 
 -- 侧后键
 Gm:setMouseAssignment(4, function()
-  Builds.DH:DevouringStrafe()
+
 end)
 
 -- 侧前键
 Gm:setMouseAssignment(5, function()
-  if Gm:isControlKeyPressed(ControlKeys.Alt) then
-    Builds.Wiz:TalRashaMeteor()
-  else
-    Builds.Wiz:TalRashaMeteorWithDiamondSkin()
-  end
+  Builds.Wiz:TalRashaMeteorWithDiamondSkin()
 end)
