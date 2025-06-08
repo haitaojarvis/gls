@@ -867,36 +867,37 @@ function Builds.DH:DevouringStrafe()
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, toggleStrafe)
 
   Gm.actions = {
-    -- 翅膀
+    -- 宠物(Companion)
+    -- 带翅膀(Shadow Power)戒律(Discipline)会不够, 宠物通用性和综合收益最好
     Action:new({
-      interval = 5000,
+      interval = 1000,
+      delay = 2000,
       func = function()
-        Gm:clickKey(Keys.ActionBarSkill_1)
-      end,
-      shouldLater = function()
-        return Gm.data.strafe == false
-      end,
+        if Gm.data.strafe then
+          Gm:clickKey(Keys.ActionBarSkill_1)
+        end
+      end
     }),
-    -- 蓄势待发
+    -- 蓄势待发(Preparation)
     Action:new({
       interval = Timing.MS_3F,
-      delay = 1000,
+      delay = 5000,
       func = function()
         if Gm.data.strafe then
           Gm:clickKey(Keys.ActionBarSkill_2)
         end
       end
     }),
-    -- 烟雾
+    -- 烟雾(Smoke Screen)
     Action:new({
       interval = 1000,
-      delay = 2000,
       func = function()
         if Gm.data.strafe then
           Gm:clickKey(Keys.ActionBarSkill_3)
         end
       end
     }),
+    -- 复仇(Vengeance)
     Action:new({
       interval = Timing.MS_3F,
       func = function()
@@ -905,9 +906,10 @@ function Builds.DH:DevouringStrafe()
         end
       end
     }),
+    -- 追踪箭(Hungering Arrow)
     Action:new({
-      interval = Timing.MS_12F,
-      delay = Timing.MS_6F,
+      interval = Timing.MS_20F,
+      delay = Timing.MS_12F,
       func = function()
         if Gm.data.strafe then
           Gm:clickKey(Mouse.Left)
@@ -928,7 +930,7 @@ function Builds.DH:ImpaleStrafe()
       Gm:releaseKey(Mouse.Right)
     else
       Gm.data.strafe = true
-      -- 每次状态切换都重新激活一次翅膀和三刀
+      -- 每次状态切换都重新激活一次翅膀(Shadow Power)和飞刀(Impale)
       Gm:clickKey(Keys.ActionBarSkill_1)
       Gm:clickKey(Keys.ActionBarSkill_3)
       Gm:sleep(Timing.MS_6F)
@@ -938,9 +940,9 @@ function Builds.DH:ImpaleStrafe()
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, toggleStrafe)
 
   Gm.actions = {
-    -- 烟雾弹
+    -- 烟雾(Smoke Screen - Vanishing Powder)
     Action:new({
-      interval = Timing.MS_3F,
+      interval = 1000,
       delay = 2000,
       func = function()
         if Gm.data.strafe then
@@ -948,7 +950,7 @@ function Builds.DH:ImpaleStrafe()
         end
       end
     }),
-    -- 复仇
+    -- 复仇(Vengeance)
     Action:new({
       interval = Timing.MS_3F,
       func = function()
