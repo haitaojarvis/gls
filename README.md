@@ -4,8 +4,8 @@
 
 虽然是为 `Diablo 3` 编写的游戏脚本，但其实可以简单扩展出任意需要有规律点击的宏操作。
 
-> 本脚本主要为 `macOS` 平台的 GHub 编写，在 `Windows` 平台上可能存在兼容问题
-> 尤其 `自动分解` 这种依赖鼠标位置的功能，极大概率无法正常运行
+> 本脚本主要为 `macOS` 平台的 GHub 编写，在 `Windows` 平台上可能存在兼容问题。
+> 尤其 `自动分解` 这种依赖鼠标位置的功能，极大概率无法正常运行。
 
 ## 两种脚本引入方式
 1. 操作简单 - `Copy/Paste` 方式，直接把脚本代码复制粘贴到 GHub 配置文件的代码编辑器里并保存
@@ -38,10 +38,10 @@ end)
 ```
 
 ## 其它 Build
-参考 `Builds.Wiz:VryLollipop`, `Builds.Wiz:HappyTalRashaMeteor`, `Builds.Monk:LoDWoL`, `Builds.Crus:AoVFist` 等 Build 的实现
+参考 `Builds.Wiz:VryLollipop`, `Builds.DH:DevouringStrafe`, `Builds.Monk:LoDWoL`, `Builds.Crus:AoVFist` 等 Build 的实现
 
 
-## 强烈建议的键位配置
+## Macbook(Pro) 推荐的键位配置
 由于 GHub 只能检测 `lshift`, `lctrl`, `lalt` 以及鼠标 “中键” 和 “右键” 的按下状态，
 为了便于操作和舒适性，在使用鼠标宏时我们的手自然会放在键盘左下角靠近控制键的地方，
 这通常会跟不使用鼠标宏时手的摆放位置大不相同，需要的键位设定也会不一样。
@@ -64,13 +64,16 @@ end)
   * 手动模式用 `2`, 宏模式用 `x`
 
 - 强制移动: `spacebar` 和 `z`
-  * 手动模式下用 `spacebar`, 宏模式下用 `z`
+  * 手动模式下用 `spacebar`
+  * 宏模式下用 `z`
 
 - 强制站立: `c`
-  * `c` 在 `z` 和 `spacebar` 中间，都很好搭配
+  * 手动模式下用 `c`
+  * 宏模式下通过控制键事件来按 `c`(没有位置合适的按键了/使用场景也不多)
 
 - 药水：默认的 `q` 和 `5`
-  * 手动模式用 `5`, 宏模式用 `q`
+  * 手动模式用 `5`
+  * 宏模式用 `q`
 
 - 关闭所有打开的窗口：`w`
   * 默认的 `spacebar` 已改作它用
@@ -82,10 +85,13 @@ end)
   * 默认的 `z` 要改作它用
   * 相比 `u` 它离常用的 `i` 更远，不容易误触
 
+## Mac 系统的一些小优化设定
+- **打开**：自动切换到文稿的输入法(Automatically switch to a document's input source)
+- **关闭**：自动大写字词的首字母(Capitalize words automatically)
 
 ## 屏幕分辨率和鼠标位置
-  - 在 “MacOS + 多显示器” 环境下，`GetMousePosition()` 返回的鼠标位置会受**屏幕布局**影响，并不实用
-  - 由此，**手工测试** “自动分解” 等宏功能里使用的鼠标定位坐标是最简单有效的方式
+- 在 “MacOS + 多显示器” 环境下，`GetMousePosition()` 返回的鼠标位置会受**屏幕布局**影响，并不实用
+- 由此，**手工测试** “自动分解” 等宏功能里使用的鼠标定位坐标是最简单有效的方式
 
 ## **按键** 相关问题
 - Mac 下，`EnablePrimaryMouseButtonEvents` 无效

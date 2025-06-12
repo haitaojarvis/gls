@@ -493,7 +493,10 @@ end
 -- 处理 action 是否 ready 的逻辑
 function Gm:_progressAction(action)
   local now = Gm._timestamp
-
+  -- 每次帧循环先处理 action 的 onEachTick 方法
+  if type(action.onEachTick) == Types.Function then
+    action.onEachTick(action)
+  end
   -- 检查主要属性字段
   if type(action._isReady) ~= Types.Boolean then
     action._isReady = false
@@ -538,7 +541,7 @@ end
 -- 执行/处理 已经 ready 的 action
 function Gm:_handleAction(action)
   -- 如果需要 “延迟执行” 当前 action，则不进行任何操作直接返回
-  if action:shouldLater() then
+  if action.shouldLater(action) then
     return
   end
 
@@ -547,7 +550,7 @@ function Gm:_handleAction(action)
   action._isReady = false
   -- 再执行 action 实际动作
   if type(action.func) == Types.Function then
-    action:func()
+    action.func(action)
   end
   if Gm:isUsableKey(action.key) then
     Gm:clickKey(action.key)
@@ -701,8 +704,12 @@ function Action:new(params)
   local act = setmetatable({}, self)
 
   act._isReady = false
-  -- func 会在处理 `self.key` 之前运行，可在里面做各种工作
-  -- 它还会接受一个参数 `self`，可以用来访问或修改当前 action 的属性
+  -- `onEachTick` 会在每个帧循环中(检查是否 ready 前)被调用执行
+  -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
+  act.onEachTick = params.onEachTick
+  -- func 会在每次处理 `.key` 之前被调用执行
+  -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
+  -- 也可替代或配合 `.key` 在里面触发各种动作
   act.func = params.func
   -- action 绑定的按键，可以是鼠标或键盘按键
   act.key = params.key
@@ -711,6 +718,7 @@ function Action:new(params)
   -- action 延迟执行的时间，单位为 ms
   act.delay = params.delay
   -- `shouldLater() => true` 时当前 action 进入 “稍后执行” 状态
+  -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
   act.shouldLater = params.shouldLater
 
   -- 初始化时需要设置为 nil, `0` 会导致后续运行过程中无法判断出是否初始化时的 `0`
@@ -867,7 +875,7 @@ function Builds.DH:DevouringStrafe()
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, toggleStrafe)
 
   Gm.actions = {
-    -- 宠物(Companion)
+    -- 战宠(Companion)
     -- 带翅膀(Shadow Power)戒律(Discipline)会不够, 宠物通用性和综合收益最好
     Action:new({
       interval = 1000,
@@ -919,6 +927,86 @@ function Builds.DH:DevouringStrafe()
   }
 
   toggleStrafe()
+end
+
+-- 娜塔亚陷阱
+function Builds.DH:NatalyaSpikeTrap()
+  -- 半自动拉怪
+  Gm:addControlEvent(
+    ControlKeys.Shift,
+    Types.KeyPressed,
+    function()
+      Gm:startForceStand()
+      Gm:sleep(Timing.MS_6F)
+      Gm:clickKey(Mouse.Left)
+      Gm:clickKey(Keys.ActionBarSkill_1)
+      Gm:sleep(Timing.MS_6F)
+      Gm:stopForceStand()
+    end
+  )
+  -- 自动放陷阱加引爆
+  Gm.data.detonate = false
+  Gm:addControlEvent(
+    ControlKeys.Alt,
+    Types.KeyPressed,
+    function()
+      Gm:startForceStand()
+      Gm:pressKey(Mouse.Right)
+      Gm.data.detonate = true
+    end
+  )
+  Gm:addControlEvent(
+    ControlKeys.Alt,
+    Types.KeyReleased,
+    function()
+      Gm:stopForceStand()
+      Gm:releaseKey(Mouse.Right)
+      Gm.data.detonate = false
+    end
+  )
+
+  Gm.actions = {
+    -- 铁蒺藜(Caltrops)
+    Action:new({
+      interval = 2000,
+      key = Keys.ActionBarSkill_1,
+      shouldLater = function()
+        return Gm.data.detonate == false
+      end
+    }),
+    -- 战宠(Companion)
+    Action:new({
+      interval = 1000,
+      delay = 5000,
+      key = Keys.ActionBarSkill_2,
+    }),
+    -- 烟雾弹(Smoke Screen)
+    Action:new({
+      key = Keys.ActionBarSkill_3,
+      onEachTick = function(sf)
+        if Gm.data.detonate then
+          sf.interval = 1000
+        else
+          sf.interval = 3000
+        end
+      end
+    }),
+    -- 复仇(Vengeance)
+    Action:new({
+      interval = Timing.MS_3F,
+      delay = 1000,
+      key = Keys.ActionBarSkill_4,
+    }),
+    -- 闪避射击(Evasive Fire)
+    Action:new({
+      interval = 1700,
+      func = function()
+        if Gm.data.detonate then
+          Gm:clickKey(Mouse.Left)
+        end
+      end
+    }),
+  }
 end
 
 -- 三刀(扫射)
@@ -1058,15 +1146,15 @@ function Builds.Monk:LoDWoL()
     Action:new({
       key = Keys.ActionBarSkill_1,
       delay = 3000,
-      func = function(self)
-        self.interval = allyIter.next()
+      func = function(sf)
+        sf.interval = allyIter.next()
       end
     }),
     -- 黑人灵光悟
     Action:new({
-      func = function(self)
+      func = function(sf)
         Gm:clickKey(Keys.ActionBarSkill_3)
-        self.interval = epiphanyIter.next()
+        sf.interval = epiphanyIter.next()
       end
     }),
   }
@@ -1129,10 +1217,10 @@ end)
 
 -- 侧后键
 Gm:setMouseAssignment(4, function()
-
+  Builds.DH:NatalyaSpikeTrap()
 end)
 
 -- 侧前键
 Gm:setMouseAssignment(5, function()
-  Builds.Wiz:TalRashaMeteorWithDiamondSkin()
+  Builds.Crus:AoVFist()
 end)
