@@ -814,7 +814,7 @@ local Builds = {
 
 --- WIZ 法师
 -- 维尔棒棒糖
-function Builds.Wiz:VryLollipop()
+function Builds.Wiz:VryChantodo()
   -- 先开黑人(键位 4)
   Gm:clickKey(Keys.ActionBarSkill_4)
   -- 再开罩子
@@ -841,13 +841,53 @@ function Builds.Wiz:TalRashaMeteorWithDiamondSkin()
       func = function()
         Gm:startForceStand()
         Gm:sleep(Timing.MS_3F)
+        -- 魔星(Familiar)
         Gm:clickKey(Mouse.Left)
+        -- 风暴护甲(Storm Armor)
         Gm:clickKey(Keys.ActionBarSkill_1)
+        -- 魔法武器(Magic Weapon)
         Gm:clickKey(Keys.ActionBarSkill_4)
         Gm:stopForceStand()
       end
     }),
   }
+end
+
+-- 火鸟聚能爆破
+function Builds.Wiz:FirebirdExplosiveBlast()
+  -- 切换引导状态
+  local function toggleChanneling()
+    if Gm.data.channeling then
+      Gm.data.channeling = false
+      Gm:releaseKey(Mouse.Right)
+    else
+      Gm.data.channeling = true
+      Gm:pressKey(Mouse.Right)
+    end
+  end
+  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, toggleChanneling)
+
+  Gm.actions = {
+    -- 聚能爆破(Explosive Blast)
+    Action:new({ interval = Timing.MS_3F, key = Keys.ActionBarSkill_3 }),
+    Action:new({
+      interval = 1000 * 60 * 5,
+      func = function()
+        Gm:startForceStand()
+        Gm:sleep(Timing.MS_3F)
+        -- 魔星(Familiar)
+        Gm:clickKey(Mouse.Left)
+        -- 风暴护甲(Storm Armor)
+        Gm:clickKey(Keys.ActionBarSkill_1)
+        -- 魔法武器(Magic Weapon)
+        Gm:clickKey(Keys.ActionBarSkill_4)
+        Gm:stopForceStand()
+      end
+    }),
+  }
+
+  -- 默认开引导
+  toggleChanneling()
 end
 
 -- DH 猎魔人
@@ -1217,7 +1257,7 @@ end)
 
 -- 侧后键
 Gm:setMouseAssignment(4, function()
-  Builds.DH:NatalyaSpikeTrap()
+  Builds.Wiz:TalRashaMeteorWithDiamondSkin()
 end)
 
 -- 侧前键
