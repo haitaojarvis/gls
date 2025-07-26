@@ -75,6 +75,18 @@ local Config = {
   -- PS: 由于 `GetRunningTime` 返回值的最大精度为 1ms, 所以帧时间和最小时钟周期的 *小数部分意义不大*
   TickTime = 8.34,
   FrameTime = 16.67,
+  -- 操作系统平台，支持 `macOS` 和 `Windows` 两个值
+  os = "macOS",
+  -- mac 笔记本分辨率(基础分辨率)
+  macResolution = {
+    width = 1440,
+    height = 900,
+  },
+  -- Windows 坐标位置
+  windowsCoord = {
+    endX = 65535,
+    endY = 65535,
+  },
   -- 是否开启 Debug 模式
   -- (Debug 模式会自动输出一些运行过程日志)
   Debug = false,
@@ -156,6 +168,10 @@ end
 
 function Gm:getCurrentTime()
   return GetRunningTime()
+end
+
+function Gm:roundNumber(num)
+  return math.floor(num + 0.5)
 end
 
 function Gm:sleep(ms)
@@ -627,7 +643,11 @@ end
 --- 一些常用游戏动作
 -- 移动鼠标(Mac 多屏系统)
 function Gm:moveMouse(x, y)
-  MoveMouseToVirtual(x, y)
+  if Config.os ~= "macOS" then
+    MoveMouseTo(x, y)
+  else
+    MoveMouseToVirtual(x, y)
+  end
 end
 
 -- 强制移动相关
@@ -748,6 +768,16 @@ local Inventory = {
   -- 要进行物品拆除的储物箱列数
   Cols       = 8,
 }
+
+-- 针对 Windows 平台背包坐标设置
+if Config.os ~= "macOS" then
+  local widthRatio = Config.windowsResolution.width / Config.macResolution.width
+  local heightRatio = Config.windowsResolution.height / Config.macResolution.height
+  Inventory.StartX = Gm:roundNumber(widthRatio * 1068)
+  Inventory.StartY = Gm:roundNumber(heightRatio * 482)
+  Inventory.SlotWidth  = Gm:roundNumber(widthRatio * 38)
+  Inventory.SlotHeight = Gm:roundNumber(heightRatio * 42)
+end
 
 -- Kadala 赌博
 -- 血岩碎片上限 2000，可使用背包格子数量为 6 * 8 = 48
@@ -1252,7 +1282,7 @@ end
 -- =============================================================================
 -- DPI 切换键
 Gm:setMouseAssignment(6, function()
-  Builds.DH:DevouringStrafe()
+  Builds.Crus:AoVFist()
 end)
 
 -- 侧后键
@@ -1262,5 +1292,5 @@ end)
 
 -- 侧前键
 Gm:setMouseAssignment(5, function()
-  Builds.Crus:AoVFist()
+  Builds.DH:DevouringStrafe()
 end)

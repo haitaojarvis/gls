@@ -9,8 +9,9 @@
     "ReleaseMouseButton",
     "PressAndReleaseMouseButton",
     "MoveMouseToVirtual",
+    "MoveMouseTo",
     "IsMouseButtonPressed",
     "IsModifierPressed",
-    "OutputLogMessage"
+    "OutputLogMessage",
   ]
 }
