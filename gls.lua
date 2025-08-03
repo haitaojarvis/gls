@@ -771,8 +771,9 @@ local Inventory = {
 
 -- 针对 Windows 平台背包坐标设置
 if Config.os ~= "macOS" then
-  local widthRatio = Config.windowsResolution.width / Config.macResolution.width
-  local heightRatio = Config.windowsResolution.height / Config.macResolution.height
+  local widthRatio = Config.windowsCoord.endX / Config.macResolution.width
+  local heightRatio = Config.windowsCoord.endY / Config.macResolution.height
+
   Inventory.StartX = Gm:roundNumber(widthRatio * 1068)
   Inventory.StartY = Gm:roundNumber(heightRatio * 482)
   Inventory.SlotWidth  = Gm:roundNumber(widthRatio * 38)
