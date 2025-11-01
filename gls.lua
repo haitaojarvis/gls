@@ -841,6 +841,7 @@ local Builds = {
   Wiz = {},
   Monk = {},
   Crus = {},
+  Nec = {},
 }
 
 --- WIZ 法师
@@ -859,29 +860,6 @@ function Builds.Wiz:VryChantodo()
     count = count - 1
     Gm:sleep(612)
   end
-end
-
--- 钻石体肤塔拉夏陨石
-function Builds.Wiz:TalRashaMeteorWithDiamondSkin()
-  Gm.actions = {
-    -- 钻石体肤(Diamond Skin)
-    -- 带 “黑洞(Black Hole)” 或 “冰霜新星(Frost Nova)” 的玩法，注释掉这行手动触发就好
-    Action:new({ interval = 1000, key = Keys.ActionBarSkill_3 }),
-    Action:new({
-      interval = 1000 * 60 * 5,
-      func = function()
-        Gm:startForceStand()
-        Gm:sleep(Timing.MS_3F)
-        -- 魔星(Familiar)
-        Gm:clickKey(Mouse.Left)
-        -- 风暴护甲(Storm Armor)
-        Gm:clickKey(Keys.ActionBarSkill_1)
-        -- 魔法武器(Magic Weapon)
-        Gm:clickKey(Keys.ActionBarSkill_4)
-        Gm:stopForceStand()
-      end
-    }),
-  }
 end
 
 -- 火鸟聚能爆破
@@ -1000,86 +978,6 @@ function Builds.DH:DevouringStrafe()
   toggleStrafe()
 end
 
--- 娜塔亚陷阱
-function Builds.DH:NatalyaSpikeTrap()
-  -- 半自动拉怪
-  Gm:addControlEvent(
-    ControlKeys.Shift,
-    Types.KeyPressed,
-    function()
-      Gm:startForceStand()
-      Gm:sleep(Timing.MS_6F)
-      Gm:clickKey(Mouse.Left)
-      Gm:clickKey(Keys.ActionBarSkill_1)
-      Gm:sleep(Timing.MS_6F)
-      Gm:stopForceStand()
-    end
-  )
-  -- 自动放陷阱加引爆
-  Gm.data.detonate = false
-  Gm:addControlEvent(
-    ControlKeys.Alt,
-    Types.KeyPressed,
-    function()
-      Gm:startForceStand()
-      Gm:pressKey(Mouse.Right)
-      Gm.data.detonate = true
-    end
-  )
-  Gm:addControlEvent(
-    ControlKeys.Alt,
-    Types.KeyReleased,
-    function()
-      Gm:stopForceStand()
-      Gm:releaseKey(Mouse.Right)
-      Gm.data.detonate = false
-    end
-  )
-
-  Gm.actions = {
-    -- 铁蒺藜(Caltrops)
-    Action:new({
-      interval = 2000,
-      key = Keys.ActionBarSkill_1,
-      shouldLater = function()
-        return Gm.data.detonate == false
-      end
-    }),
-    -- 战宠(Companion)
-    Action:new({
-      interval = 1000,
-      delay = 5000,
-      key = Keys.ActionBarSkill_2,
-    }),
-    -- 烟雾弹(Smoke Screen)
-    Action:new({
-      key = Keys.ActionBarSkill_3,
-      onEachTick = function(sf)
-        if Gm.data.detonate then
-          sf.interval = 1000
-        else
-          sf.interval = 3000
-        end
-      end
-    }),
-    -- 复仇(Vengeance)
-    Action:new({
-      interval = Timing.MS_3F,
-      delay = 1000,
-      key = Keys.ActionBarSkill_4,
-    }),
-    -- 闪避射击(Evasive Fire)
-    Action:new({
-      interval = 1700,
-      func = function()
-        if Gm.data.detonate then
-          Gm:clickKey(Mouse.Left)
-        end
-      end
-    }),
-  }
-end
-
 -- 三刀(扫射)
 function Builds.DH:ImpaleStrafe()
   --  切换扫射状态
@@ -1180,7 +1078,7 @@ function Builds.Monk:InnaAlly()
   }
 end
 
--- 散件敲钟
+-- 散件敲钟(圣化)
 function Builds.Monk:LoDWoL()
   Gm:addControlEvent(
     ControlKeys.Alt,
@@ -1278,6 +1176,27 @@ function Builds.Crus:AoVFist()
   steedCharge()
 end
 
+--- Nec 死灵
+-- 拉斯玛亡者大军
+function Builds.Nec:RathmaAotD()
+  Gm.actions = {
+    Action:new({
+      key = Keys.ActionBarSkill_1,
+      interval = Timing.MS_1F * 40,
+    }),
+    Action:new({
+      key = Keys.ActionBarSkill_4,
+      delay = 1500,
+      interval = Timing.MS_1F * 20,
+    }),
+    Action:new({
+      key = Mouse.Left,
+      delay = 150,
+      interval = 1000,
+    }),
+  }
+end
+
 -- =============================================================================
 -- #鼠标按键功能绑定#
 -- =============================================================================
@@ -1288,10 +1207,10 @@ end)
 
 -- 侧后键
 Gm:setMouseAssignment(4, function()
-  Builds.Wiz:TalRashaMeteorWithDiamondSkin()
+  Builds.Nec:RathmaAotD()
 end)
 
 -- 侧前键
 Gm:setMouseAssignment(5, function()
-  Builds.DH:DevouringStrafe()
+  
 end)
