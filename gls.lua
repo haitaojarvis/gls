@@ -1186,12 +1186,12 @@ function Builds.Nec:RathmaAotD()
     }),
     Action:new({
       key = Keys.ActionBarSkill_4,
-      delay = 1500,
+      delay = 200,
       interval = Timing.MS_1F * 20,
     }),
     Action:new({
       key = Mouse.Left,
-      delay = 150,
+      delay = 100,
       interval = 1000,
     }),
   }
