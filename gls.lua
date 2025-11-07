@@ -1179,22 +1179,61 @@ end
 --- Nec 死灵
 -- 拉斯玛亡者大军
 function Builds.Nec:RathmaAotD()
+  -- Siphon Blood
+  Gm.data.siphoning = false;
+  local function startSiphon()
+    if Gm:isForceMoving() then
+      Gm:stopForceMove()
+    end
+    Gm:pressKey(Keys.ActionBarSkill_3)
+    Gm.data.siphoning = true
+  end
+  local function stopSiphon()
+    Gm:releaseKey(Keys.ActionBarSkill_3)
+    Gm.data.siphoning = false
+    if not Gm:isForceMoving() then
+      Gm:startForceMove()
+    end
+  end
+  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
+    if Gm.data.siphoning then
+      stopSiphon()
+    else
+      startSiphon()
+    end
+  end)
+
+  -- Blood Rush
+  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
+    if Gm.data.siphoning then
+      stopSiphon()
+      Gm:sleep(Timing.MS_1F * 18)
+    end
+    Gm:clickKey(Keys.ActionBarSkill_2)
+  end)
+
   Gm.actions = {
     Action:new({
-      key = Keys.ActionBarSkill_1,
       interval = Timing.MS_1F * 40,
+      key = Keys.ActionBarSkill_1
     }),
     Action:new({
-      key = Keys.ActionBarSkill_4,
       delay = 200,
       interval = Timing.MS_1F * 20,
+      func = function ()
+        if Gm.data.siphoning then
+          Gm:clickKey(Keys.ActionBarSkill_4)
+        end
+      end
     }),
     Action:new({
-      key = Mouse.Left,
       delay = 100,
       interval = 1000,
+      key = Mouse.Left
     }),
   }
+
+  startSiphon()
 end
 
 -- =============================================================================
