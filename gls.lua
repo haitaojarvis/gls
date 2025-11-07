@@ -658,13 +658,17 @@ function Gm:isForceMoving()
 end
 
 function Gm:startForceMove()
-  Gm:pressKey(Keys.ForceMove)
-  Gm.data._forceMove__ = true
+  if not Gm.data._forceMove__ then
+    Gm:pressKey(Keys.ForceMove)
+    Gm.data._forceMove__ = true
+  end
 end
 
 function Gm:stopForceMove()
-  Gm:releaseKey(Keys.ForceMove)
-  Gm.data._forceMove__ = false
+  if Gm.data._forceMove__ then
+    Gm:releaseKey(Keys.ForceMove)
+    Gm.data._forceMove__ = false
+  end
 end
 
 -- 强制站立相关
@@ -673,13 +677,17 @@ function Gm:isForceStanding()
 end
 
 function Gm:startForceStand()
-  Gm:pressKey(Keys.ForceStand)
-  Gm.data._forceStand__ = true
+  if not Gm.data._forceStand__ then
+    Gm:pressKey(Keys.ForceStand)
+    Gm.data._forceStand__ = true
+  end
 end
 
 function Gm:stopForceStand()
-  Gm:releaseKey(Keys.ForceStand)
-  Gm.data._forceStand__ = false
+  if Gm.data._forceStand__ then
+    Gm:releaseKey(Keys.ForceStand)
+    Gm.data._forceStand__ = false
+  end
 end
 
 -- TP 回城
@@ -1182,18 +1190,14 @@ function Builds.Nec:RathmaAotD()
   -- Siphon Blood
   Gm.data.siphoning = false;
   local function startSiphon()
-    if Gm:isForceMoving() then
-      Gm:stopForceMove()
-    end
+    Gm:stopForceMove()
     Gm:pressKey(Keys.ActionBarSkill_3)
     Gm.data.siphoning = true
   end
   local function stopSiphon()
     Gm:releaseKey(Keys.ActionBarSkill_3)
     Gm.data.siphoning = false
-    if not Gm:isForceMoving() then
-      Gm:startForceMove()
-    end
+    Gm:startForceMove()
   end
   Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
     if Gm.data.siphoning then
@@ -1207,7 +1211,7 @@ function Builds.Nec:RathmaAotD()
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     if Gm.data.siphoning then
       stopSiphon()
-      Gm:sleep(Timing.MS_1F * 18)
+      Gm:sleep(Timing.MS_20F)
     end
     Gm:clickKey(Keys.ActionBarSkill_2)
   end)
