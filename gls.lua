@@ -1194,10 +1194,17 @@ function Builds.Nec:RathmaAotD()
     Gm:pressKey(Keys.ActionBarSkill_3)
     Gm.data.siphoning = true
   end
-  local function stopSiphon()
+  local function stopSiphon(forceMove)
     Gm:releaseKey(Keys.ActionBarSkill_3)
     Gm.data.siphoning = false
-    Gm:startForceMove()
+    if type(forceMove) ~= Types.Boolean then
+      forceMove = true
+    end
+    if forceMove then
+      Gm:startForceMove()
+    else
+      Gm:stopForceMove()
+    end
   end
   Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
     if Gm.data.siphoning then
@@ -1205,6 +1212,9 @@ function Builds.Nec:RathmaAotD()
     else
       startSiphon()
     end
+  end)
+  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
+    stopSiphon(false)
   end)
 
   -- Blood Rush
