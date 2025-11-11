@@ -529,8 +529,8 @@ function Gm:_progressAction(action)
   if type(action.delay) ~= Types.Number or action.delay < 0 then
     action.delay = 0
   end
-  if type(action.shouldLater) ~= Types.Function then
-    action.shouldLater = function() return false end
+  if type(action.shouldDeferExecution) ~= Types.Function then
+    action.shouldDeferExecution = function() return false end
   end
 
   -- 初始化 action 时间戳
@@ -557,7 +557,7 @@ end
 -- 执行/处理 已经 ready 的 action
 function Gm:_handleAction(action)
   -- 如果需要 “延迟执行” 当前 action，则不进行任何操作直接返回
-  if action.shouldLater(action) then
+  if action.shouldDeferExecution(action) then
     return
   end
 
@@ -659,6 +659,7 @@ end
 
 function Gm:startForceMove()
   if not Gm.data._forceMove__ then
+    Gm:stopForceStand()
     Gm:pressKey(Keys.ForceMove)
     Gm.data._forceMove__ = true
   end
@@ -678,6 +679,7 @@ end
 
 function Gm:startForceStand()
   if not Gm.data._forceStand__ then
+    Gm:stopForceMove()
     Gm:pressKey(Keys.ForceStand)
     Gm.data._forceStand__ = true
   end
@@ -745,9 +747,9 @@ function Action:new(params)
   act.interval = params.interval
   -- action 延迟执行的时间，单位为 ms
   act.delay = params.delay
-  -- `shouldLater() => true` 时当前 action 进入 “稍后执行” 状态
+  -- `shouldDeferExecution() => true` 时当前 action 进入 “稍后执行” 状态
   -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
-  act.shouldLater = params.shouldLater
+  act.shouldDeferExecution = params.shouldDeferExecution
 
   -- 初始化时需要设置为 nil, `0` 会导致后续运行过程中无法判断出是否初始化时的 `0`
   act._timestamp = nil
@@ -929,7 +931,7 @@ function Builds.DH:DevouringStrafe()
       Gm:pressKey(Mouse.Right)
     end
   end
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, toggleStrafe)
+  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, toggleStrafe)
 
   Gm.actions = {
     -- 战宠(Companion)
@@ -949,7 +951,7 @@ function Builds.DH:DevouringStrafe()
       delay = 5000,
       func = function()
         if Gm.data.strafe then
-          Gm:clickKey(Keys.ActionBarSkill_2)
+          Gm:clickKey(Keys.ActionBarSkill_3)
         end
       end
     }),
@@ -958,7 +960,7 @@ function Builds.DH:DevouringStrafe()
       interval = 1000,
       func = function()
         if Gm.data.strafe then
-          Gm:clickKey(Keys.ActionBarSkill_3)
+          Gm:clickKey(Keys.ActionBarSkill_2)
         end
       end
     }),
@@ -973,7 +975,7 @@ function Builds.DH:DevouringStrafe()
     }),
     -- 追踪箭(Hungering Arrow)
     Action:new({
-      interval = Timing.MS_20F,
+      interval = Timing.MS_12F,
       delay = Timing.MS_12F,
       func = function()
         if Gm.data.strafe then
@@ -1037,6 +1039,118 @@ function Builds.DH:ImpaleStrafe()
   }
 
   toggleStrafe()
+end
+
+--- 娜塔亚陷阱
+function Builds.DH:NatalyaSpikeTrap()
+  -- 自动放陷阱
+  Gm.data.spikeTrap = false
+  local function startSpikeTrap()
+    Gm:startForceStand()
+    Gm:pressKey(Mouse.Right)
+    Gm.data.spikeTrap = true
+  end
+  local function stopSpikeTrap(forceMove)
+    Gm:releaseKey(Mouse.Right)
+    Gm.data.spikeTrap = false
+
+    if type(forceMove) ~= Types.Boolean then
+      forceMove = true
+    end
+    if forceMove then
+      Gm:startForceMove()
+    else
+      Gm:stopForceMove()
+    end
+  end
+  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
+    if Gm.data.spikeTrap then
+      stopSpikeTrap()
+    else
+      startSpikeTrap()
+    end
+  end)
+
+  -- 拉怪
+  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
+    local isForceMoving = Gm:isForceMoving()
+    local isForceStanding = Gm:isForceStanding()
+    local isSpikeTrap = Gm.data.spikeTrap
+    if isSpikeTrap then
+      stopSpikeTrap(false)
+    end
+
+    Gm:startForceStand()
+    Gm:sleep(Timing.MS_6F)
+    Gm:pressKey(Mouse.Right)
+    Gm:sleep(Timing.MS_20F)
+    Gm:releaseKey(Mouse.Right)
+    Gm:clickKey(Mouse.Left)
+    Gm:sleep(Timing.MS_1F * 9)
+    Gm:clickKey(Keys.ActionBarSkill_1)
+    Gm:sleep(Timing.MS_6F)
+
+    if isSpikeTrap then
+      startSpikeTrap()
+    elseif isForceMoving then
+      Gm:startForceMove()
+    elseif not isForceStanding then
+      Gm:stopForceStand()
+    end
+  end)
+  -- free move
+  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
+    stopSpikeTrap(false)
+  end)
+
+  Gm.actions = {
+    -- 铁蒺藜(Caltrops)
+    Action:new({
+      interval = 2000,
+      key = Keys.ActionBarSkill_1,
+      shouldDeferExecution = function()
+        return Gm.data.spikeTrap == false
+      end
+    }),
+    -- 战宠(Companion)
+    Action:new({
+      interval = 1000,
+      delay = 5000,
+      key = Keys.ActionBarSkill_3,
+    }),
+    -- 烟雾弹(Smoke Screen)
+    Action:new({
+      key = Keys.ActionBarSkill_2,
+      onEachTick = function(sf)
+        if Gm.data.spikeTrap then
+          sf.interval = 1000
+        else
+          sf.interval = 3000
+        end
+      end
+    }),
+    -- 复仇(Vengeance)
+    Action:new({
+      interval = Timing.MS_3F,
+      delay = 1000,
+      key = Keys.ActionBarSkill_4,
+    }),
+    -- 闪避射击(Evasive Fire)
+    Action:new({
+      interval = 1700,
+      func = function()
+        if Gm.data.spikeTrap then
+          Gm:clickKey(Mouse.Left)
+        end
+      end,
+    }),
+  }
+
+  -- initial
+  Gm:pressKey(Mouse.Right)
+  Gm:sleep(1700)
+  Gm:releaseKey(Mouse.Right)
+  Gm:startForceMove()
 end
 
 --- MONK 武僧
@@ -1197,6 +1311,7 @@ function Builds.Nec:RathmaAotD()
   local function stopSiphon(forceMove)
     Gm:releaseKey(Keys.ActionBarSkill_3)
     Gm.data.siphoning = false
+
     if type(forceMove) ~= Types.Boolean then
       forceMove = true
     end
@@ -1213,6 +1328,7 @@ function Builds.Nec:RathmaAotD()
       startSiphon()
     end
   end)
+  -- free move
   Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
     stopSiphon(false)
   end)
@@ -1247,6 +1363,7 @@ function Builds.Nec:RathmaAotD()
     }),
   }
 
+  -- initial
   startSiphon()
 end
 
@@ -1265,5 +1382,5 @@ end)
 
 -- 侧前键
 Gm:setMouseAssignment(5, function()
-  
+  Builds.DH:NatalyaSpikeTrap()
 end)
