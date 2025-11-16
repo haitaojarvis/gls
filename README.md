@@ -147,14 +147,14 @@ end)
   * 暂停状态使用场景很少很少，不值得增加复杂性 - 日常操作和实现上的双重复杂性
   * 对于类似 “过图后重对元素戒” 的场景，绑定一个 “对元素” 的控制键事件就行
 
-- 关于 `action:shouldLater`
+- 关于 `action:shouldDeferExecution`
   * 返回 `true` 表示当前 action 进入 “稍后再试” 状态
-  * 不同于 "暂停状态"，Later 时脚本引擎会持续运行并跳过已经 ready 的 action,
-  * 等 Later 状态退出后被 “稍后再试” 的 action 会被立刻执行
+  * 不同于 "暂停状态"，Defer 时脚本引擎会持续运行并跳过已经 ready 的 action,
+  * 等 Defer 状态退出后被 “稍后再试” 的 action 会被立刻执行
   * 这通常用于 “捡东西”、“读条” 和其它一些需要 “防打断” 但又不值当停止宏的场景
 
 - 关于定时器 `timer/setTimeout`
-  * 目前设计，timer 背后也是 Action, 但不受 `shouldLater` 约束
+  * 目前设计，timer 背后也是 Action, 但不受 `shouldDeferExecution` 约束
 
 - 关于 `alert()`
   * 这种需求很少很少，目前仅保留 `Keys.Alert` 键位配以备不时之需

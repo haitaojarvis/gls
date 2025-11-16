@@ -975,8 +975,8 @@ function Builds.DH:DevouringStrafe()
     }),
     -- 追踪箭(Hungering Arrow)
     Action:new({
-      interval = Timing.MS_12F,
-      delay = Timing.MS_12F,
+      interval = Timing.MS_1F * 10,
+      delay = Timing.MS_20F,
       func = function()
         if Gm.data.strafe then
           Gm:clickKey(Mouse.Left)
@@ -1082,13 +1082,11 @@ function Builds.DH:NatalyaSpikeTrap()
 
     Gm:startForceStand()
     Gm:sleep(Timing.MS_6F)
-    Gm:pressKey(Mouse.Right)
-    Gm:sleep(Timing.MS_20F)
-    Gm:releaseKey(Mouse.Right)
+    Gm:clickKey(Mouse.Right)
+    Gm:sleep(Timing.MS_12F)
     Gm:clickKey(Mouse.Left)
-    Gm:sleep(Timing.MS_1F * 9)
     Gm:clickKey(Keys.ActionBarSkill_1)
-    Gm:sleep(Timing.MS_6F)
+    Gm:sleep(Timing.MS_12F)
 
     if isSpikeTrap then
       startSpikeTrap()
@@ -1104,14 +1102,6 @@ function Builds.DH:NatalyaSpikeTrap()
   end)
 
   Gm.actions = {
-    -- 铁蒺藜(Caltrops)
-    Action:new({
-      interval = 2000,
-      key = Keys.ActionBarSkill_1,
-      shouldDeferExecution = function()
-        return Gm.data.spikeTrap == false
-      end
-    }),
     -- 战宠(Companion)
     Action:new({
       interval = 1000,
@@ -1125,7 +1115,7 @@ function Builds.DH:NatalyaSpikeTrap()
         if Gm.data.spikeTrap then
           sf.interval = 1000
         else
-          sf.interval = 3000
+          sf.interval = 2500
         end
       end
     }),
@@ -1135,20 +1125,24 @@ function Builds.DH:NatalyaSpikeTrap()
       delay = 1000,
       key = Keys.ActionBarSkill_4,
     }),
-    -- 闪避射击(Evasive Fire)
+    -- 闪避射击(Evasive Fire) + 铁蒺藜(Caltrops)
     Action:new({
-      interval = 1700,
+      interval = 1400,
       func = function()
         if Gm.data.spikeTrap then
           Gm:clickKey(Mouse.Left)
+          Gm:clickKey(Keys.ActionBarSkill_1)
         end
       end,
+      shouldDeferExecution = function()
+        return Gm.data.spikeTrap == false
+      end
     }),
   }
 
   -- initial
   Gm:pressKey(Mouse.Right)
-  Gm:sleep(1700)
+  Gm:sleep(1000)
   Gm:releaseKey(Mouse.Right)
   Gm:startForceMove()
 end
@@ -1372,7 +1366,7 @@ end
 -- =============================================================================
 -- DPI 切换键
 Gm:setMouseAssignment(6, function()
-  Builds.Crus:AoVFist()
+  Builds.DH:DevouringStrafe()
 end)
 
 -- 侧后键
