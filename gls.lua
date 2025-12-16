@@ -39,6 +39,8 @@ local Keys = {
 local Mouse = {
   --- 鼠标键位码
   -- 左键
+  -- ⚠️：持续按住或高频率点击左键会打断很多技能的释放以及引导技能的触发(比如 DeathNova)，
+  -- ⚠️：除左键放置主要伤害技能外应尽量避免这种情况。
   Left = 1,
   -- 中键
   Middle = 2,
@@ -101,7 +103,7 @@ local Timing = {
   -- 3f(~50ms): 无缝点击，以不高于此时间间隔按技能时 “技能栏无闪烁” 约等于一直按住
   MS_3F = Config.FrameTime * 3,
   -- 6f(~100ms): 普通点击，适合所有模拟人类快速连点的情况，比如 “自动左键攻击”、”连续按下两个技能“ 等场景的时间间隔
-  -- 以次频率点击左键进行走路时，人物动作也很顺滑不鬼畜
+  -- 以此频率点击左键进行走路时，人物动作也会比较顺滑不鬼畜
   MS_6F = Config.FrameTime * 6,
   -- 12f(~200ms): 慢速普通点击，适合类似 6f 但希望触发频率更低或需要等待更久的场景
   -- 类似 TP 这类需要 “人物站稳” 才能正常触发的技能一般也要等 12f 才能比较稳定的触发
@@ -1083,6 +1085,7 @@ function Builds.DH:NatalyaSpikeTrap()
     Gm:startForceStand()
     Gm:sleep(Timing.MS_6F)
     Gm:clickKey(Mouse.Right)
+    Gm:clickKey(Mouse.Right)
     Gm:sleep(Timing.MS_12F)
     Gm:clickKey(Mouse.Left)
     Gm:clickKey(Keys.ActionBarSkill_1)
@@ -1127,7 +1130,7 @@ function Builds.DH:NatalyaSpikeTrap()
     }),
     -- 闪避射击(Evasive Fire) + 铁蒺藜(Caltrops)
     Action:new({
-      interval = 1400,
+      interval = 1500,
       func = function()
         if Gm.data.spikeTrap then
           Gm:clickKey(Mouse.Left)
@@ -1299,11 +1302,94 @@ function Builds.Nec:RathmaAotD()
   Gm.data.siphoning = false;
   local function startSiphon()
     Gm:stopForceMove()
-    Gm:pressKey(Keys.ActionBarSkill_3)
+    Gm:pressKey(Mouse.Right)
     Gm.data.siphoning = true
   end
   local function stopSiphon(forceMove)
-    Gm:releaseKey(Keys.ActionBarSkill_3)
+    Gm:releaseKey(Mouse.Right)
+    Gm.data.siphoning = false
+    Gm:sleep(Timing.MS_3F)
+
+    if type(forceMove) ~= Types.Boolean then
+      forceMove = true
+    end
+    if forceMove then
+      Gm:startForceMove()
+    else
+      Gm:stopForceMove()
+    end
+  end
+  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
+    if Gm.data.siphoning then
+      stopSiphon()
+    else
+      startSiphon()
+    end
+  end)
+  -- free move
+  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
+    stopSiphon(false)
+  end)
+
+  -- Blood Rush
+  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
+    if Gm.data.siphoning then
+      stopSiphon()
+    end
+    Gm:pressKey(Keys.ActionBarSkill_2)
+    Gm:sleep(Timing.MS_20F)
+    Gm:releaseKey(Keys.ActionBarSkill_2)
+  end)
+
+  Gm.actions = {
+    -- Command Skeletons
+    Action:new({
+      key = Keys.ActionBarSkill_3,
+      onEachTick = function(sf)
+        if Gm.data.siphoning then
+          sf.interval = 1000
+        else
+          sf.interval = 2000
+        end
+      end
+    }),
+    -- Army of the Dead
+    Action:new({
+      delay = 200,
+      interval = Timing.MS_1F * 40,
+      func = function ()
+        if Gm.data.siphoning then
+          Gm:clickKey(Keys.ActionBarSkill_4)
+        end
+      end
+    }),
+    -- Bone Armor
+    Action:new({
+      delay = 100,
+      interval = 1000,
+      func = function ()
+        if Gm.data.siphoning then
+          Gm:clickKey(Mouse.Left)
+        end
+      end
+    }),
+  }
+
+  -- initial
+  startSiphon()
+end
+
+-- 死亡新星
+function Builds.Nec:DeathNova()
+  -- Siphon Blood
+  Gm.data.siphoning = false;
+  local function startSiphon()
+    Gm:stopForceMove()
+    Gm:pressKey(Mouse.Right)
+    Gm.data.siphoning = true
+  end
+  local function stopSiphon(forceMove)
+    Gm:releaseKey(Mouse.Right)
     Gm.data.siphoning = false
 
     if type(forceMove) ~= Types.Boolean then
@@ -1331,34 +1417,27 @@ function Builds.Nec:RathmaAotD()
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     if Gm.data.siphoning then
       stopSiphon()
-      Gm:sleep(Timing.MS_20F)
     end
-    Gm:clickKey(Keys.ActionBarSkill_2)
+    Gm:pressKey(Keys.ActionBarSkill_2)
+    Gm:sleep(Timing.MS_20F)
+    Gm:releaseKey(Keys.ActionBarSkill_2)
   end)
 
   Gm.actions = {
-    Action:new({
-      interval = Timing.MS_1F * 40,
-      key = Keys.ActionBarSkill_1
-    }),
-    Action:new({
-      delay = 200,
-      interval = Timing.MS_1F * 20,
-      func = function ()
-        if Gm.data.siphoning then
-          Gm:clickKey(Keys.ActionBarSkill_4)
-        end
-      end
-    }),
+    -- Bone Armor
     Action:new({
       delay = 100,
-      interval = 1000,
-      key = Mouse.Left
+      interval = Timing.MS_1F * 40,
+      func = function ()
+        if Gm.data.siphoning then
+          Gm:clickKey(Keys.ActionBarSkill_3)
+        end
+      end
     }),
   }
 
   -- initial
-  startSiphon()
+  Gm:startForceMove()
 end
 
 -- =============================================================================
@@ -1366,15 +1445,15 @@ end
 -- =============================================================================
 -- DPI 切换键
 Gm:setMouseAssignment(6, function()
-  Builds.DH:DevouringStrafe()
+  Builds.Crus:AoVFist()
 end)
 
 -- 侧后键
 Gm:setMouseAssignment(4, function()
-  Builds.Nec:RathmaAotD()
+  Builds.Nec:DeathNova()
 end)
 
 -- 侧前键
 Gm:setMouseAssignment(5, function()
-  Builds.DH:NatalyaSpikeTrap()
+  Builds.Nec:RathmaAotD()
 end)
