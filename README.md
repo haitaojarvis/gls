@@ -147,6 +147,9 @@ end)
   * 暂停状态使用场景很少很少，不值得增加复杂性 - 日常操作和实现上的双重复杂性
   * 对于类似 “过图后重对元素戒” 的场景，绑定一个 “对元素” 的控制键事件就行
 
+- 如何 “对元素”
+  * 注册一个控制按键事件并调用 `Gm:makeActionReady` 标记一下该 action
+
 - 关于 `action:shouldDeferExecution`
   * 返回 `true` 表示当前 action 进入 “稍后再试” 状态
   * 不同于 "暂停状态"，Defer 时脚本引擎会持续运行并跳过已经 ready 的 action,
@@ -155,9 +158,6 @@ end)
 
 - 关于定时器 `timer/setTimeout`
   * 目前设计，timer 背后也是 Action, 但不受 `shouldDeferExecution` 约束
-
-- 关于 `alert()`
-  * 这种需求很少很少，目前仅保留 `Keys.Alert` 键位配以备不时之需
 
 - 关于 “按键按下持续时间”
   * 这种需求很少很少，可通过一对儿加 `delay` 的 action 来实现，不再增加复杂性
@@ -176,7 +176,3 @@ end)
   * 这种需求很少很少，可通过 `action.func()` 来实现，不再增加复杂性
   * 另外也无法处理 `PressKey()` 等 API 按下多键时的顺序和间隔时间
   * 鼠标按键相关的 按下/释放 按键函数不支持多键
-
-- 关于运行时 `data` 处理
-  * 保持简单，直接按 Lua `table` 的存取方式，不再提供 `get/set` 等方法
-
