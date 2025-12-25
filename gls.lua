@@ -944,7 +944,7 @@ function Builds.DH:DevouringStrafe()
       Gm:pressKey(Mouse.Right)
     end
   end
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, toggleStrafe)
+  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, toggleStrafe)
 
   Gm.actions = {
     -- 战宠(Companion)
@@ -1058,15 +1058,15 @@ end
 --- 娜塔亚陷阱
 function Builds.DH:NatalyaSpikeTrap()
   -- 自动放陷阱
-  local spikeTrap = false
+  local spikeTrapMode = false
   local function startSpikeTrap()
     Gm:startForceStand()
     Gm:pressKey(Mouse.Right)
-    spikeTrap = true
+    spikeTrapMode = true
   end
   local function stopSpikeTrap(forceMove)
     Gm:releaseKey(Mouse.Right)
-    spikeTrap = false
+    spikeTrapMode = false
 
     if type(forceMove) ~= Types.Boolean then
       forceMove = true
@@ -1078,7 +1078,7 @@ function Builds.DH:NatalyaSpikeTrap()
     end
   end
   Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
-    if spikeTrap then
+    if spikeTrapMode then
       stopSpikeTrap()
     else
       startSpikeTrap()
@@ -1089,8 +1089,9 @@ function Builds.DH:NatalyaSpikeTrap()
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     local isForceMoving = Gm:isForceMoving()
     local isForceStanding = Gm:isForceStanding()
-    local isSpikeTrap = spikeTrap
-    if isSpikeTrap then
+    local isSpikeTrapMode = spikeTrapMode
+
+    if isSpikeTrapMode then
       stopSpikeTrap(false)
     end
 
@@ -1103,7 +1104,7 @@ function Builds.DH:NatalyaSpikeTrap()
     Gm:clickKey(Keys.ActionBarSkill_1)
     Gm:sleep(Timing.MS_12F)
 
-    if isSpikeTrap then
+    if isSpikeTrapMode then
       startSpikeTrap()
     elseif isForceMoving then
       Gm:startForceMove()
@@ -1127,7 +1128,7 @@ function Builds.DH:NatalyaSpikeTrap()
     Action:new({
       key = Keys.ActionBarSkill_2,
       onEachTick = function(sf)
-        if spikeTrap then
+        if spikeTrapMode then
           sf.interval = 1000
         else
           sf.interval = 2500
@@ -1144,13 +1145,13 @@ function Builds.DH:NatalyaSpikeTrap()
     Action:new({
       interval = 1500,
       func = function()
-        if spikeTrap then
+        if spikeTrapMode then
           Gm:clickKey(Mouse.Left)
           Gm:clickKey(Keys.ActionBarSkill_1)
         end
       end,
       shouldDeferExecution = function()
-        return spikeTrap == false
+        return spikeTrapMode == false
       end
     }),
   }
@@ -1164,7 +1165,7 @@ end
 
 --- MONK 武僧
 -- 散件敲钟(圣化)
-function Builds.Monk:LoDWoL()
+function Builds.Monk:SanctLoDWoL()
   Gm:addControlEvent(
     ControlKeys.Alt,
     Types.KeyPressed,
