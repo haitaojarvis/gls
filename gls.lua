@@ -131,7 +131,7 @@ local Gm = {
   _timestamp = 0,
 
   -- 记录上次触发运行状态改变的事件信息，包含事件的 `key` 和 `type`
-  _lastRunningEvent = nil,
+  _lastRunningEvent = {},
   -- 当前 task 监听的控制按键事件
   _controlEvents = {},
   -- 当前 task 注册的定时器
@@ -411,14 +411,14 @@ function Gm:_launchTask(keyCode)
     keyCode = Mouse.Right
   end
 
+  local lreKey = Gm._lastRunningEvent.key
+  local lreType = Gm._lastRunningEvent.type
+  -- 每次触发 start 前都要记录 `_lastRunningEvent`
+  Gm:_updateLastRunningEvent(keyCode, Types.KeyReleased)
   -- 防止 `Pressed` 阶段触发 `Gm:stop()` 后 `Released` 阶段又触发任务进入死循环
   -- 这种情况下，相当于主动忽略掉这次 `Released` 事件
   -- 根据设计，`_launchTask` 方法里 `evt.type` 一定是 `Types.ControlKeyReleased`
-  local lre = Gm._lastRunningEvent
-  -- 每次触发 start 前都要记录 `_lastRunningEvent`
-  Gm:_updateLastRunningEvent(keyCode, Types.KeyReleased)
-  -- (使用 `Types.Table` 会影响 `Lua Diagnostics` 的类型推导)
-  if type(lre) == "table" and lre.key == keyCode and lre.type == Types.KeyPressed then
+  if lreKey == keyCode and lreType == Types.KeyPressed then
     return
   end
 
@@ -473,16 +473,16 @@ end
 
 -- 结束任务
 function Gm:_stop()
+  -- 关闭轮训状态并清理运行时状态
+  Gm._running = false
   -- 先自动调用 `teardown`
   if type(Gm.teardown) == Types.Function then
     Gm.teardown()
   end
-  -- 关闭轮训状态并清理运行时状态
-  Gm._running = false
   -- 这里不能设为 `0`，`_launchTask` 里需要它来判断离上次 stop 过去了多少时间
   Gm._timestamp = Gm:getCurrentTime()
   -- 这里也不能重置 `_lastRunningEvent`，`_launchTask` 需要它来判断是否是同一个事件的不同阶段
-  -- Gm._lastRunningEvent = nil,
+  -- Gm._lastRunningEvent = {},
   Gm._controlEvents = {}
   Gm._timers = {}
   Gm._state = {}
@@ -499,8 +499,8 @@ end
 
 -- 更新活动控制事件标记
 function Gm:_updateLastRunningEvent(key, type)
-  local evt = { key = key, type = type }
-  Gm._lastRunningEvent = evt
+  Gm._lastRunningEvent.key = key
+  Gm._lastRunningEvent.type = type
 end
 
 -- 处理 action 是否 ready 的逻辑
@@ -726,10 +726,12 @@ function OnEvent(evt, arg)
     Gm:_stop()
   elseif evt == "MOUSE_BUTTON_RELEASED" then
     -- 只监听鼠标按键的 `MOUSE_BUTTON_RELEASED` 事件
-    -- `MOUSE_BUTTON_PRESSED` 留作 “中键、右键” 等的 “按下状态” 判断
     Gm:_launchTask(arg)
+  elseif evt == "MOUSE_BUTTON_PRESSED" then
+    -- `MOUSE_BUTTON_PRESSED` 留作 “中键、右键” 等的 “按下状态” 判断
   else
     -- 其它事件
+    Gm:_stop()
   end
 end
 
@@ -887,20 +889,39 @@ end
 function Builds.Wiz:FirebirdExplosiveBlast()
   -- 切换引导状态
   local channeling = false
-  local function toggleChanneling()
-    if channeling then
-      channeling = false
-      Gm:releaseKey(Mouse.Right)
-    else
-      channeling = true
-      Gm:pressKey(Mouse.Right)
-    end
+  local function startChanneling()
+    channeling = true
+    Gm:pressKey(Mouse.Right)
   end
-  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, toggleChanneling)
+  local function stopChanneling()
+    channeling = false
+    Gm:releaseKey(Mouse.Right)
+  end
+  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
+    if channeling then
+      stopChanneling()
+    else
+      startChanneling()
+    end
+  end)
+
+  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
+    Gm:clickKey(Keys.ActionBarSkill_2)
+    -- Gm:pressKey(Keys.ActionBarSkill_2)
+    -- Gm:sleep(Timing.MS_20F)
+    -- Gm:releaseKey(Keys.ActionBarSkill_2)
+  end)
 
   Gm.actions = {
     -- 聚能爆破(Explosive Blast)
-    Action:new({ interval = Timing.MS_3F, key = Keys.ActionBarSkill_3 }),
+    Action:new({
+      interval = Timing.MS_3F,
+      func = function()
+        if channeling then
+          Gm:clickKey(Keys.ActionBarSkill_3)
+        end
+      end,
+    }),
     Action:new({
       interval = 1000 * 60 * 5,
       func = function()
@@ -913,12 +934,15 @@ function Builds.Wiz:FirebirdExplosiveBlast()
         -- 魔法武器(Magic Weapon)
         Gm:clickKey(Keys.ActionBarSkill_4)
         Gm:stopForceStand()
+      end,
+      shouldDeferExecution = function()
+        return channeling ~= true
       end
     }),
   }
 
   -- 默认开引导
-  toggleChanneling()
+  startChanneling()
 end
 
 -- DH 猎魔人
@@ -1064,22 +1088,17 @@ function Builds.DH:NatalyaSpikeTrap()
     Gm:pressKey(Mouse.Right)
     spikeTrapMode = true
   end
-  local function stopSpikeTrap(forceMove)
+  local function stopSpikeTrap()
+    Gm:stopForceStand()
     Gm:releaseKey(Mouse.Right)
     spikeTrapMode = false
-
-    if type(forceMove) ~= Types.Boolean then
-      forceMove = true
-    end
-    if forceMove then
-      Gm:startForceMove()
-    else
-      Gm:stopForceMove()
-    end
   end
   Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
     if spikeTrapMode then
       stopSpikeTrap()
+      Gm:startForceMove()
+    elseif not Gm:isForceMoving() then
+      Gm:startForceMove()
     else
       startSpikeTrap()
     end
@@ -1092,7 +1111,7 @@ function Builds.DH:NatalyaSpikeTrap()
     local isSpikeTrapMode = spikeTrapMode
 
     if isSpikeTrapMode then
-      stopSpikeTrap(false)
+      stopSpikeTrap()
     end
 
     Gm:startForceStand()
@@ -1114,7 +1133,8 @@ function Builds.DH:NatalyaSpikeTrap()
   end)
   -- free move
   Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
-    stopSpikeTrap(false)
+    stopSpikeTrap()
+    Gm:stopForceMove()
   end)
 
   Gm.actions = {
@@ -1194,7 +1214,6 @@ function Builds.Monk:SanctLoDWoL()
   local allyIter = Gm:makeCycleIterator({ 3000, 1000, 1000 })
   -- 灵光悟动态 interval
   local epiphanyIter = Gm:makeCycleIterator({ 4000, 1000, 1000, 1000, 1000 })
-
   -- 定义动作列表, 开始循环
   Gm.actions = {
     -- 幻身诀
@@ -1272,30 +1291,24 @@ function Builds.Nec:RathmaAotD()
     Gm:pressKey(Mouse.Right)
     siphoning = true
   end
-  local function stopSiphon(forceMove)
+  local function stopSiphon()
     Gm:releaseKey(Mouse.Right)
     siphoning = false
-    Gm:sleep(Timing.MS_3F)
-
-    if type(forceMove) ~= Types.Boolean then
-      forceMove = true
-    end
-    if forceMove then
-      Gm:startForceMove()
-    else
-      Gm:stopForceMove()
-    end
   end
   Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
     if siphoning then
       stopSiphon()
+      Gm:startForceMove()
+    elseif not Gm:isForceMoving() then
+      Gm:startForceMove()
     else
       startSiphon()
     end
   end)
   -- free move
   Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
-    stopSiphon(false)
+    Gm:stopForceMove()
+    stopSiphon()
   end)
 
   -- Blood Rush
@@ -1356,28 +1369,24 @@ function Builds.Nec:DeathNova()
     Gm:pressKey(Mouse.Right)
     siphoning = true
   end
-  local function stopSiphon(forceMove)
+  local function stopSiphon()
     Gm:releaseKey(Mouse.Right)
     siphoning = false
-    if type(forceMove) ~= Types.Boolean then
-      forceMove = true
-    end
-    if forceMove then
-      Gm:startForceMove()
-    else
-      Gm:stopForceMove()
-    end
   end
   Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
     if siphoning then
       stopSiphon()
+      Gm:startForceMove()
+    elseif not Gm:isForceMoving() then
+      Gm:startForceMove()
     else
       startSiphon()
     end
   end)
   -- free move
   Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
-    stopSiphon(false)
+    Gm:stopForceMove()
+    stopSiphon()
   end)
 
   -- Blood Rush
@@ -1393,6 +1402,16 @@ function Builds.Nec:DeathNova()
 
   Gm.actions = {
     -- Bone Armor
+    Action:new({
+      delay = 100,
+      interval = Timing.MS_1F * 40,
+      func = function ()
+        if siphoning then
+          Gm:clickKey(Keys.ActionBarSkill_3)
+        end
+      end
+    }),
+    -- Land of the Dead
     Action:new({
       delay = 100,
       interval = Timing.MS_1F * 40,
