@@ -124,7 +124,7 @@ local Types = {
   KeyReleased = "released"
 }
 
-local Gm = {
+Gm = {
   -- Gm 是否处于运行中
   _running = false,
   -- Gm 运行时间戳
@@ -422,11 +422,6 @@ function Gm:_launchTask(keyCode)
     return
   end
 
-  local task = Gm:getMouseAssignment(keyCode)
-  if type(task) ~= "function" then
-    return
-  end
-
   -- `Gm._running ~= false` 状态表示 Gm 运行还没结束或没有正常结束, 需要主动 `stop`
   if Gm._running ~= false then
     Gm:_stop()
@@ -434,6 +429,11 @@ function Gm:_launchTask(keyCode)
 
   -- 防止误操作而意外触发脚本运行，故丢弃在脚本执行结束后一定时间内触发的鼠标事件
   if Gm:getCurrentTime() - Gm._timestamp < Config.DebounceTime then
+    return
+  end
+
+  local task = Gm:getMouseAssignment(keyCode)
+  if type(task) ~= "function" then
     return
   end
 
@@ -907,9 +907,6 @@ function Builds.Wiz:FirebirdExplosiveBlast()
 
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     Gm:clickKey(Keys.ActionBarSkill_2)
-    -- Gm:pressKey(Keys.ActionBarSkill_2)
-    -- Gm:sleep(Timing.MS_20F)
-    -- Gm:releaseKey(Keys.ActionBarSkill_2)
   end)
 
   Gm.actions = {
@@ -925,6 +922,7 @@ function Builds.Wiz:FirebirdExplosiveBlast()
     Action:new({
       interval = 1000 * 60 * 5,
       func = function()
+        local isForceMoving = Gm:isForceMoving()
         Gm:startForceStand()
         Gm:sleep(Timing.MS_3F)
         -- 魔星(Familiar)
@@ -933,16 +931,86 @@ function Builds.Wiz:FirebirdExplosiveBlast()
         Gm:clickKey(Keys.ActionBarSkill_1)
         -- 魔法武器(Magic Weapon)
         Gm:clickKey(Keys.ActionBarSkill_4)
+        Gm:sleep(Timing.MS_3F)
         Gm:stopForceStand()
+        if isForceMoving then
+          Gm:startForceMove()
+        end
       end,
       shouldDeferExecution = function()
-        return channeling ~= true
+        return channeling == true
       end
     }),
   }
 
   -- 默认开引导
   startChanneling()
+end
+
+-- 陨石
+function Builds.Wiz:Meteor()
+  local damage = false;
+  local function startDamage()
+    Gm:stopForceMove()
+    Gm:pressKey(Mouse.Right)
+    Gm:clickKey(Keys.ActionBarSkill_3)
+    damage = true
+  end
+  local function stopDamage()
+    Gm:releaseKey(Mouse.Right)
+    damage = false
+  end
+  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
+    if damage then
+      stopDamage()
+      Gm:startForceMove()
+    elseif not Gm:isForceMoving() then
+      Gm:startForceMove()
+    else
+      startDamage()
+    end
+  end)
+  -- free move
+  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
+    Gm:stopForceMove()
+    stopDamage()
+  end)
+
+  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
+    if damage then
+      stopDamage()
+    end
+    Gm:pressKey(Keys.ActionBarSkill_2)
+    Gm:sleep(Timing.MS_20F)
+    Gm:releaseKey(Keys.ActionBarSkill_2)
+    Gm:startForceMove()
+  end)
+
+  Gm.actions = {
+    Action:new({
+      interval = 1000 * 60 * 5,
+      func = function()
+        local isForceMoving = Gm:isForceMoving()
+        Gm:startForceStand()
+        Gm:sleep(Timing.MS_3F)
+        -- 魔星(Familiar)
+        Gm:clickKey(Mouse.Left)
+        -- 风暴护甲(Storm Armor)
+        Gm:clickKey(Keys.ActionBarSkill_1)
+        -- 魔法武器(Magic Weapon)
+        Gm:clickKey(Keys.ActionBarSkill_4)
+        Gm:sleep(Timing.MS_3F)
+        Gm:stopForceStand()
+        if isForceMoving then
+          Gm:startForceMove()
+        end
+      end,
+      shouldDeferExecution = function()
+        return damage == true
+      end
+    }),
+  }
+
 end
 
 -- DH 猎魔人
@@ -1194,7 +1262,6 @@ function Builds.Monk:SanctLoDWoL()
       -- 开禅定
       Gm:clickKey(Keys.ActionBarSkill_4)
       Gm:sleep(Timing.MS_6F)
-
       -- 再敲两钟
       Gm:clickKey(Mouse.Left)
       Gm:sleep(Timing.MS_6F)
@@ -1402,16 +1469,6 @@ function Builds.Nec:DeathNova()
 
   Gm.actions = {
     -- Bone Armor
-    Action:new({
-      delay = 100,
-      interval = Timing.MS_1F * 40,
-      func = function ()
-        if siphoning then
-          Gm:clickKey(Keys.ActionBarSkill_3)
-        end
-      end
-    }),
-    -- Land of the Dead
     Action:new({
       delay = 100,
       interval = Timing.MS_1F * 40,
