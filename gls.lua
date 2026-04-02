@@ -977,13 +977,10 @@ function Builds.Wiz:Meteor()
   end)
 
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
-    if damage then
-      stopDamage()
+    Gm:clickKey(Keys.ActionBarSkill_2)
+    if not damage then
+      Gm:startForceMove()
     end
-    Gm:pressKey(Keys.ActionBarSkill_2)
-    Gm:sleep(Timing.MS_20F)
-    Gm:releaseKey(Keys.ActionBarSkill_2)
-    Gm:startForceMove()
   end)
 
   Gm.actions = {
