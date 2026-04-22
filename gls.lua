@@ -58,8 +58,8 @@ local ControlKeys = {
 
   -- 鼠标中键为固定功能键，不再支持绑定其它事件
   -- MouseMiddle = Mouse.Middle,
-  -- 为鼠标右键再绑定特定功能的场景很少
-  MouseRight = Mouse.Right,
+  -- 为鼠标右键再绑定特定功能的场景很少，不再支持绑定其它事件
+  -- MouseRight = Mouse.Right,
 }
 
 -- =============================================================================
@@ -131,7 +131,7 @@ Gm = {
   _timestamp = 0,
 
   -- 记录上次触发运行状态改变的事件信息，包含事件的 `key` 和 `type`
-  _lastRunningEvent = {},
+  _lastTaskEvent = {},
   -- 当前 task 监听的控制按键事件
   _controlEvents = {},
   -- 当前 task 注册的定时器
@@ -227,8 +227,8 @@ function Gm:shouldContinue()
   end
 
   if IsMouseButtonPressed(Mouse.Middle) then
-    -- 每次触发 `Gm:stop()` 前都要记录 `_lastRunningEvent`
-    Gm:_updateLastRunningEvent(Mouse.Middle, Types.KeyPressed)
+    -- 每次触发 `Gm:stop()` 前都要记录 `_lastTaskEvent`
+    Gm:_updateLastTaskEvent(Mouse.Middle, Types.KeyPressed)
     return false
   end
 
@@ -277,9 +277,9 @@ function Gm:clickKey(k)
   Gm:log("clickKey", k)
 end
 
--- 释放所有按下的按键
+-- 释放所有可能被按下的按键
 -- 不设为私有('_'), 在不依赖 action 的脚本里也会用到
-function Gm:releasePressedKeys()
+function Gm:releaseAllKeys()
   -- 释放所有鼠标按键
   for _, k in pairs(Mouse) do
     if type(k) == Types.Number and k >= 1 and k <= 5 then
@@ -288,9 +288,7 @@ function Gm:releasePressedKeys()
   end
   -- 释放所有控制键
   for _, k in pairs(ControlKeys) do
-    if Gm:isMouseButton(k) == false then
-      Gm:releaseKey(k)
-    end
+    Gm:releaseKey(k)
   end
   -- 释放所有其它绑定按键
   for _, k in pairs(Keys) do
@@ -404,21 +402,15 @@ end
 -- 发送鼠标按键绑定的 task
 function Gm:_launchTask(keyCode)
   Gm:log("launchTask", keyCode)
-  -- 修正 `OnEvent` 返回的 keyCode, 跟 `Mouse` 中的定义保持一致
-  if keyCode == Mouse.Right then
-    keyCode = Mouse.Middle
-  elseif keyCode == Mouse.Middle then
-    keyCode = Mouse.Right
-  end
 
-  local lreKey = Gm._lastRunningEvent.key
-  local lreType = Gm._lastRunningEvent.type
-  -- 每次触发 start 前都要记录 `_lastRunningEvent`
-  Gm:_updateLastRunningEvent(keyCode, Types.KeyReleased)
+  local lteKey = Gm._lastTaskEvent.key
+  local lteType = Gm._lastTaskEvent.type
+  -- 每次触发 start 前都要记录 `_lastTaskEvent`
+  Gm:_updateLastTaskEvent(keyCode, Types.KeyReleased)
   -- 防止 `Pressed` 阶段触发 `Gm:stop()` 后 `Released` 阶段又触发任务进入死循环
   -- 这种情况下，相当于主动忽略掉这次 `Released` 事件
   -- 根据设计，`_launchTask` 方法里 `evt.type` 一定是 `Types.ControlKeyReleased`
-  if lreKey == keyCode and lreType == Types.KeyPressed then
+  if lteKey == keyCode and lteType == Types.KeyPressed then
     return
   end
 
@@ -481,8 +473,8 @@ function Gm:_stop()
   end
   -- 这里不能设为 `0`，`_launchTask` 里需要它来判断离上次 stop 过去了多少时间
   Gm._timestamp = Gm:getCurrentTime()
-  -- 这里也不能重置 `_lastRunningEvent`，`_launchTask` 需要它来判断是否是同一个事件的不同阶段
-  -- Gm._lastRunningEvent = {},
+  -- 这里也不能重置 `_lastTaskEvent`，`_launchTask` 需要它来判断是否是同一个事件的不同阶段
+  -- Gm._lastTaskEvent = {},
   Gm._controlEvents = {}
   Gm._timers = {}
   Gm._state = {}
@@ -493,14 +485,14 @@ function Gm:_stop()
   Gm.teardown = function() end
 
   -- 自动释放所有绑定的按键
-  Gm:releasePressedKeys()
+  Gm:releaseAllKeys()
   Gm:log("Gm stopped.")
 end
 
 -- 更新活动控制事件标记
-function Gm:_updateLastRunningEvent(key, type)
-  Gm._lastRunningEvent.key = key
-  Gm._lastRunningEvent.type = type
+function Gm:_updateLastTaskEvent(key, type)
+  Gm._lastTaskEvent.key = key
+  Gm._lastTaskEvent.type = type
 end
 
 -- 处理 action 是否 ready 的逻辑
@@ -510,24 +502,12 @@ function Gm:_progressAction(action)
   if type(action.onEachTick) == Types.Function then
     action.onEachTick(action)
   end
-  -- 检查主要属性字段
-  if type(action._isReady) ~= Types.Boolean then
-    action._isReady = false
-  end
-  if type(action.func) ~= Types.Function then
-    action.func = nil
-  end
-  if Gm:isUsableKey(action.key) == false then
-    action.key = nil
-  end
+
   if type(action.interval) ~= Types.Number or action.interval < Config.FrameTime then
     action.interval = Config.FrameTime
   end
   if type(action.delay) ~= Types.Number or action.delay < 0 then
     action.delay = 0
-  end
-  if type(action.shouldDeferExecution) ~= Types.Function then
-    action.shouldDeferExecution = function() return false end
   end
 
   -- 初始化 action 时间戳
@@ -720,6 +700,15 @@ end
 
 --- GHub 事件监听
 function OnEvent(evt, arg)
+  -- 修正 arg 对应的 keyCode, 跟 `Mouse` 中的定义保持一致
+  if evt == "MOUSE_BUTTON_RELEASED" or evt == "MOUSE_BUTTON_PRESSED" then
+    if arg == Mouse.Right then
+      arg = Mouse.Middle
+    elseif arg == Mouse.Middle then
+      arg = Mouse.Right
+    end
+  end
+
   if evt == "PROFILE_ACTIVATED" or evt == "PROFILE_DEACTIVATED" then
     -- 配置文件切换事件(宏运行期间会阻塞消息，这些事件一般无法正常触发)
     -- 似乎，带上 `PROFILE_ACTIVATED` 会让 GHub 运行稍微稳定那么一点？😳
@@ -754,8 +743,14 @@ function Action:new(params)
   -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
   -- 也可替代或配合 `.key` 在里面触发各种动作
   act.func = params.func
+  if type(act.func) ~= Types.Function then
+    act.func = nil
+  end
   -- action 绑定的按键，可以是鼠标或键盘按键
   act.key = params.key
+  if Gm:isUsableKey(act.key) == false then
+    act.key = nil
+  end
   -- action 执行的时间间隔，单位为 ms
   act.interval = params.interval
   -- action 延迟执行的时间，单位为 ms
@@ -763,6 +758,9 @@ function Action:new(params)
   -- `shouldDeferExecution() => true` 时当前 action 进入 “稍后执行” 状态
   -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
   act.shouldDeferExecution = params.shouldDeferExecution
+  if type(act.shouldDeferExecution) ~= Types.Function then
+    act.shouldDeferExecution = function() return false end
+  end
 
   -- 初始化时需要设置为 nil, `0` 会导致后续运行过程中无法判断出是否初始化时的 `0`
   act._timestamp = nil
@@ -794,11 +792,11 @@ local Inventory = {
 
 -- 针对 Windows 平台背包坐标设置
 if Config.os ~= "macOS" then
-  local widthRatio = Config.windowsCoord.endX / Config.macResolution.width
-  local heightRatio = Config.windowsCoord.endY / Config.macResolution.height
+  local widthRatio     = Config.windowsCoord.endX / Config.macResolution.width
+  local heightRatio    = Config.windowsCoord.endY / Config.macResolution.height
 
-  Inventory.StartX = Gm:roundNumber(widthRatio * 1068)
-  Inventory.StartY = Gm:roundNumber(heightRatio * 482)
+  Inventory.StartX     = Gm:roundNumber(widthRatio * 1068)
+  Inventory.StartY     = Gm:roundNumber(heightRatio * 482)
   Inventory.SlotWidth  = Gm:roundNumber(widthRatio * 38)
   Inventory.SlotHeight = Gm:roundNumber(heightRatio * 42)
 end
@@ -897,7 +895,7 @@ function Builds.Wiz:FirebirdExplosiveBlast()
     channeling = false
     Gm:releaseKey(Mouse.Right)
   end
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
+  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
     if channeling then
       stopChanneling()
     else
@@ -960,7 +958,7 @@ function Builds.Wiz:Meteor()
     Gm:releaseKey(Mouse.Right)
     damage = false
   end
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
+  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
     if damage then
       stopDamage()
       Gm:startForceMove()
@@ -971,7 +969,7 @@ function Builds.Wiz:Meteor()
     end
   end)
   -- free move
-  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
+  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function()
     Gm:stopForceMove()
     stopDamage()
   end)
@@ -1007,7 +1005,6 @@ function Builds.Wiz:Meteor()
       end
     }),
   }
-
 end
 
 -- DH 猎魔人
@@ -1033,7 +1030,7 @@ function Builds.DH:DevouringStrafe()
       Gm:pressKey(Mouse.Right)
     end
   end
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, toggleStrafe)
+  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, toggleStrafe)
 
   Gm.actions = {
     -- 战宠(Companion)
@@ -1197,7 +1194,7 @@ function Builds.DH:NatalyaSpikeTrap()
     end
   end)
   -- free move
-  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
+  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function()
     stopSpikeTrap()
     Gm:stopForceMove()
   end)
@@ -1359,7 +1356,7 @@ function Builds.Nec:RathmaAotD()
     Gm:releaseKey(Mouse.Right)
     siphoning = false
   end
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
+  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
     if siphoning then
       stopSiphon()
       Gm:startForceMove()
@@ -1370,7 +1367,7 @@ function Builds.Nec:RathmaAotD()
     end
   end)
   -- free move
-  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
+  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function()
     Gm:stopForceMove()
     stopSiphon()
   end)
@@ -1402,7 +1399,7 @@ function Builds.Nec:RathmaAotD()
     Action:new({
       delay = 200,
       interval = Timing.MS_1F * 40,
-      func = function ()
+      func = function()
         if siphoning then
           Gm:clickKey(Keys.ActionBarSkill_4)
         end
@@ -1412,7 +1409,7 @@ function Builds.Nec:RathmaAotD()
     Action:new({
       delay = 100,
       interval = 1000,
-      func = function ()
+      func = function()
         if siphoning then
           Gm:clickKey(Mouse.Left)
         end
@@ -1437,7 +1434,7 @@ function Builds.Nec:DeathNova()
     Gm:releaseKey(Mouse.Right)
     siphoning = false
   end
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function ()
+  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
     if siphoning then
       stopSiphon()
       Gm:startForceMove()
@@ -1448,7 +1445,7 @@ function Builds.Nec:DeathNova()
     end
   end)
   -- free move
-  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function ()
+  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function()
     Gm:stopForceMove()
     stopSiphon()
   end)
@@ -1469,7 +1466,7 @@ function Builds.Nec:DeathNova()
     Action:new({
       delay = 100,
       interval = Timing.MS_1F * 40,
-      func = function ()
+      func = function()
         if siphoning then
           Gm:clickKey(Keys.ActionBarSkill_3)
         end
