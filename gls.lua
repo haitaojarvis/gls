@@ -866,23 +866,6 @@ local Builds = {
 }
 
 --- WIZ 法师
--- 维尔棒棒糖
-function Builds.Wiz:VryChantodo()
-  -- 先开黑人(键位 4)
-  Gm:clickKey(Keys.ActionBarSkill_4)
-  -- 再开罩子
-  Gm:sleep(Timing.MS_6F)
-  Gm:clickKey(Keys.ActionBarSkill_2)
-  Gm:sleep(Timing.MS_6F)
-  -- 运行黑人 1 键宏
-  local count = 33
-  while Gm:shouldContinue() and count > 0 do
-    Gm:clickKey(Keys.ActionBarSkill_1)
-    count = count - 1
-    Gm:sleep(612)
-  end
-end
-
 -- 火鸟聚能爆破
 function Builds.Wiz:FirebirdExplosiveBlast()
   -- 切换引导状态
@@ -947,43 +930,46 @@ end
 
 -- 陨石
 function Builds.Wiz:Meteor()
-  local damage = false;
-  local function startDamage()
+  local inMeteor = false;
+  local function startMeteor()
     Gm:stopForceMove()
     Gm:pressKey(Mouse.Right)
-    Gm:clickKey(Keys.ActionBarSkill_3)
-    damage = true
+    inMeteor = true
   end
-  local function stopDamage()
+  local function stopMeteor()
     Gm:releaseKey(Mouse.Right)
-    damage = false
+    inMeteor = false
   end
   Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
-    if damage then
-      stopDamage()
+    if inMeteor then
+      stopMeteor()
       Gm:startForceMove()
     elseif not Gm:isForceMoving() then
       Gm:startForceMove()
     else
-      startDamage()
+      startMeteor()
     end
   end)
   -- free move
   Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function()
+    stopMeteor()
     Gm:stopForceMove()
-    stopDamage()
   end)
 
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
-    Gm:clickKey(Keys.ActionBarSkill_2)
-    if not damage then
-      Gm:startForceMove()
-    end
+    stopMeteor()
+  end)
+  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyReleased, function()
+    Gm:pressKey(Keys.ActionBarSkill_2)
+    Gm:sleep(Timing.MS_12F)
+    Gm:releaseKey(Keys.ActionBarSkill_2)
+    Gm:sleep(Timing.MS_3F)
+    Gm:startForceMove()
   end)
 
   Gm.actions = {
     Action:new({
-      interval = 1000 * 60 * 5,
+      interval = 1000 * 60 * 2.5,
       func = function()
         local isForceMoving = Gm:isForceMoving()
         Gm:startForceStand()
@@ -1001,10 +987,21 @@ function Builds.Wiz:Meteor()
         end
       end,
       shouldDeferExecution = function()
-        return damage == true
+        return inMeteor == true
+      end
+    }),
+    -- Frost Nova/Black Hole
+    Action:new({
+      -- 随缘自动触发，但 4s 比较容易对齐元素戒
+      interval = 1000 * 4,
+      key = Keys.ActionBarSkill_3,
+      shouldDeferExecution = function()
+        return inMeteor == false
       end
     }),
   }
+
+  Gm:startForceMove()
 end
 
 -- DH 猎魔人
@@ -1374,12 +1371,13 @@ function Builds.Nec:RathmaAotD()
 
   -- Blood Rush
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
-    if siphoning then
-      stopSiphon()
-    end
+    stopSiphon()
+  end)
+  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyReleased, function()
     Gm:pressKey(Keys.ActionBarSkill_2)
-    Gm:sleep(Timing.MS_20F)
+    Gm:sleep(Timing.MS_12F)
     Gm:releaseKey(Keys.ActionBarSkill_2)
+    Gm:sleep(Timing.MS_3F)
     Gm:startForceMove()
   end)
 
@@ -1452,12 +1450,13 @@ function Builds.Nec:DeathNova()
 
   -- Blood Rush
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
-    if siphoning then
-      stopSiphon()
-    end
+    stopSiphon()
+  end)
+  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyReleased, function()
     Gm:pressKey(Keys.ActionBarSkill_2)
-    Gm:sleep(Timing.MS_20F)
+    Gm:sleep(Timing.MS_12F)
     Gm:releaseKey(Keys.ActionBarSkill_2)
+    Gm:sleep(Timing.MS_3F)
     Gm:startForceMove()
   end)
 
@@ -1483,12 +1482,12 @@ end
 -- =============================================================================
 -- DPI 切换键
 Gm:setMouseAssignment(6, function()
-  Builds.Crus:AoVFist()
+  Builds.DH:DevouringStrafe()
 end)
 
 -- 侧后键
 Gm:setMouseAssignment(4, function()
-  Builds.Nec:DeathNova()
+  Builds.Wiz:Meteor()
 end)
 
 -- 侧前键
