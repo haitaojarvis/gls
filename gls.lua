@@ -958,13 +958,11 @@ function Builds.Wiz:Meteor()
 
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     stopMeteor()
-  end)
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyReleased, function()
+    Gm:startForceMove()
+    Gm:sleep(Timing.MS_6F)
     Gm:pressKey(Keys.ActionBarSkill_2)
     Gm:sleep(Timing.MS_12F)
     Gm:releaseKey(Keys.ActionBarSkill_2)
-    Gm:sleep(Timing.MS_3F)
-    Gm:startForceMove()
   end)
 
   Gm.actions = {
@@ -1372,13 +1370,11 @@ function Builds.Nec:RathmaAotD()
   -- Blood Rush
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     stopSiphon()
-  end)
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyReleased, function()
+    Gm:startForceMove()
+    Gm:sleep(Timing.MS_6F)
     Gm:pressKey(Keys.ActionBarSkill_2)
     Gm:sleep(Timing.MS_12F)
     Gm:releaseKey(Keys.ActionBarSkill_2)
-    Gm:sleep(Timing.MS_3F)
-    Gm:startForceMove()
   end)
 
   Gm.actions = {
@@ -1451,13 +1447,11 @@ function Builds.Nec:DeathNova()
   -- Blood Rush
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     stopSiphon()
-  end)
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyReleased, function()
+    Gm:startForceMove()
+    Gm:sleep(Timing.MS_6F)
     Gm:pressKey(Keys.ActionBarSkill_2)
     Gm:sleep(Timing.MS_12F)
     Gm:releaseKey(Keys.ActionBarSkill_2)
-    Gm:sleep(Timing.MS_3F)
-    Gm:startForceMove()
   end)
 
   Gm.actions = {
