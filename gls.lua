@@ -100,6 +100,8 @@ local Timing = {
   -- 6f(~100ms): 普通点击，适合所有模拟人类快速连点的情况，比如 “自动左键攻击”、”连续按下两个技能“ 等场景的时间间隔
   -- 以此频率点击左键进行走路时，人物动作也会比较顺滑不鬼畜
   MS_6F = Config.FrameTime * 6,
+  -- 9f(~150ms): 比较适合模拟人的按键动作
+  MS_9F = Config.FrameTime * 9,
   -- 12f(~200ms): 慢速普通点击，适合类似 6f 但希望触发频率更低或需要等待更久的场景
   -- 类似 TP 这类需要 “人物站稳” 才能正常触发的技能一般也要等 12f 才能比较稳定的触发
   MS_12F = Config.FrameTime * 12,
@@ -959,7 +961,7 @@ function Builds.Wiz:Meteor()
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     stopMeteor()
     Gm:startForceMove()
-    Gm:sleep(Timing.MS_6F)
+    Gm:sleep(Timing.MS_9F)
     Gm:pressKey(Keys.ActionBarSkill_2)
     Gm:sleep(Timing.MS_12F)
     Gm:releaseKey(Keys.ActionBarSkill_2)
@@ -1371,7 +1373,7 @@ function Builds.Nec:RathmaAotD()
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     stopSiphon()
     Gm:startForceMove()
-    Gm:sleep(Timing.MS_6F)
+    Gm:sleep(Timing.MS_9F)
     Gm:pressKey(Keys.ActionBarSkill_2)
     Gm:sleep(Timing.MS_12F)
     Gm:releaseKey(Keys.ActionBarSkill_2)
@@ -1448,7 +1450,7 @@ function Builds.Nec:DeathNova()
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     stopSiphon()
     Gm:startForceMove()
-    Gm:sleep(Timing.MS_6F)
+    Gm:sleep(Timing.MS_9F)
     Gm:pressKey(Keys.ActionBarSkill_2)
     Gm:sleep(Timing.MS_12F)
     Gm:releaseKey(Keys.ActionBarSkill_2)
