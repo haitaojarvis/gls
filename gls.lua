@@ -316,7 +316,8 @@ function Gm:addControlEvent(ctrlKey, evtType, callback)
     type = evtType,
     key = ctrlKey,
     callback = callback,
-    isPressed = false
+    -- 用实际物理按键状态初始化，避免任务启动前已存在的控制键状态产生虚假事件边沿
+    isPressed = Gm:isControlKeyPressed(ctrlKey)
   })
 end
 
@@ -700,6 +701,17 @@ function Gm:cancelTownPortal()
   Gm:clickKey(Mouse.Left)
 end
 
+-- 强制传送(Force Teleport)
+-- 强制移动 → 等待前摇 → 长按传送技能 → 松开
+function Gm:forceTeleport(k)
+  k = k or Keys.ActionBarSkill_2
+  Gm:startForceMove()
+  Gm:sleep(Timing.MS_9F)
+  Gm:pressKey(k)
+  Gm:sleep(Timing.MS_12F)
+  Gm:releaseKey(k)
+end
+
 --- GHub 事件监听
 function OnEvent(evt, arg)
   -- 修正 arg 对应的 keyCode, 跟 `Mouse` 中的定义保持一致
@@ -960,11 +972,7 @@ function Builds.Wiz:Meteor()
 
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     stopMeteor()
-    Gm:startForceMove()
-    Gm:sleep(Timing.MS_9F)
-    Gm:pressKey(Keys.ActionBarSkill_2)
-    Gm:sleep(Timing.MS_12F)
-    Gm:releaseKey(Keys.ActionBarSkill_2)
+    Gm:forceTeleport()
   end)
 
   Gm.actions = {
@@ -1372,11 +1380,7 @@ function Builds.Nec:RathmaAotD()
   -- Blood Rush
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     stopSiphon()
-    Gm:startForceMove()
-    Gm:sleep(Timing.MS_9F)
-    Gm:pressKey(Keys.ActionBarSkill_2)
-    Gm:sleep(Timing.MS_12F)
-    Gm:releaseKey(Keys.ActionBarSkill_2)
+    Gm:forceTeleport()
   end)
 
   Gm.actions = {
@@ -1449,11 +1453,7 @@ function Builds.Nec:DeathNova()
   -- Blood Rush
   Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
     stopSiphon()
-    Gm:startForceMove()
-    Gm:sleep(Timing.MS_9F)
-    Gm:pressKey(Keys.ActionBarSkill_2)
-    Gm:sleep(Timing.MS_12F)
-    Gm:releaseKey(Keys.ActionBarSkill_2)
+    Gm:forceTeleport()
   end)
 
   Gm.actions = {
