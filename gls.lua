@@ -1000,8 +1000,8 @@ function Builds.Wiz:Meteor()
     }),
     -- Frost Nova/Black Hole
     Action:new({
-      -- 随缘自动触发，但 4s 比较容易对齐元素戒
-      interval = 1000 * 4,
+      -- 随缘自动触发
+      interval = 1000 * 2.5,
       key = Keys.ActionBarSkill_3,
       shouldDeferExecution = function()
         return inMeteor == false
@@ -1373,8 +1373,8 @@ function Builds.Nec:RathmaAotD()
   end)
   -- free move
   Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function()
-    Gm:stopForceMove()
     stopSiphon()
+    Gm:stopForceMove()
   end)
 
   -- Blood Rush
@@ -1478,15 +1478,15 @@ end
 -- =============================================================================
 -- DPI 切换键
 Gm:setMouseAssignment(6, function()
-  Builds.DH:DevouringStrafe()
+  Builds.Crus:AoVFist()
 end)
 
 -- 侧后键
 Gm:setMouseAssignment(4, function()
-  Builds.Wiz:Meteor()
+  Builds.Nec:RathmaAotD()
 end)
 
 -- 侧前键
 Gm:setMouseAssignment(5, function()
-  Builds.Nec:RathmaAotD()
+  Builds.Nec:DeathNova()
 end)
