@@ -47,13 +47,12 @@ local Mouse = {
 --- 控制键列表
 -- 可在宏运行期间读取到按下状态，用于控制宏状态的按键
 -- 各种取舍后只有这几个比较可用，“不要改动”
-local ControlKeys = {
+local ModifierKeys = {
   -- 一般用来在宏任务运行期间按下此键，触发某个宏状态或逻辑的转换
   Ctrl = "lctrl",
   -- 一般用来在宏任务运行期间按下此键，触发某个宏状态或逻辑的转换
   Shift = "lshift",
   -- 一般用来在鼠标按键触发宏任务时，通过判断此键的按下状态动态分流要执行的任务
-  -- (宏任务运行期间慎用此键，`alt` 组合其它键可能会对游戏运行造成巨大影响)
   Alt = "lalt",
 
   -- 鼠标中键为固定功能键，不再支持绑定其它事件
@@ -74,8 +73,8 @@ local Config = {
   FrameTime = 16.67,
   -- 操作系统平台，支持 `macOS` 和 `Windows` 两个值
   os = "macOS",
-  -- mac 笔记本分辨率(基础分辨率)
-  macResolution = {
+  -- 基准参考分辨率(基础分辨率: 1440x900)
+  refResolution = {
     width = 1440,
     height = 900,
   },
@@ -88,8 +87,9 @@ local Config = {
   -- (Debug 模式会自动输出一些运行过程日志)
   Debug = false,
 }
--- 防止误操作而意外触发脚本运行的防抖时间(时间越短越没用、越长越容易拦截正常操作)
-Config.DebounceTime = Config.FrameTime * 24
+-- 防止误操作而意外触发脚本运行的冷却时间(时间越短越没用、越长越容易拦截正常操作)
+-- 1000 / 1.618
+Config.CooldownTime = 618
 
 -- 常见的几种 “按键保持或间隔” 时间片
 local Timing = {
@@ -132,10 +132,10 @@ Gm = {
   -- Gm 运行时间戳
   _timestamp = 0,
 
-  -- 记录上次触发运行状态改变的事件信息，包含事件的 `key` 和 `type`
-  _lastTaskEvent = {},
+  -- 标记因触发宏停止而需要被忽略的下一个 GHub 事件按键（keyCode）
+  _ghubEventToIgnore = nil,
   -- 当前 task 监听的控制按键事件
-  _controlEvents = {},
+  _modifierEvents = {},
   -- 当前 task 注册的定时器
   _timers = {},
   -- 当前 task 可存取的数据
@@ -183,9 +183,8 @@ function Gm:sleep(ms)
   Sleep(ms)
 end
 
--- 是否一个可用按键 - 包括鼠标键、普通键盘键、键盘控制键等 GHub 支持的所有按键
--- (不检查是否真的可用)
-function Gm:isUsableKey(k)
+-- 判断一个值是否是按键标识符 - 包括鼠标键、普通键盘键、键盘控制键等 GHub 支持的所有按键
+function Gm:isKey(k)
   return type(k) == Types.String or type(k) == Types.Number
 end
 
@@ -196,8 +195,8 @@ function Gm:isMouseButton(k)
 end
 
 -- 判断一个键是不是控制键
-function Gm:isControlKey(key)
-  for _, k in pairs(ControlKeys) do
+function Gm:isModifierKey(key)
+  for _, k in pairs(ModifierKeys) do
     if k == key then
       return true
     end
@@ -206,18 +205,14 @@ function Gm:isControlKey(key)
   return false
 end
 
--- 注：GHub 只支持获取 `ControlKeys` 的按下状态
--- 只支持 `ControlKeys` 中定义的键
-function Gm:isControlKeyPressed(k)
-  if Gm:isControlKey(k) == false then
+-- GHub 只支持获取 `ModifierKeys` 的按下状态
+-- 只支持 `ModifierKeys` 中定义的键
+function Gm:isModifierPressed(k)
+  if Gm:isModifierKey(k) == false then
     return false
   end
 
-  if Gm:isMouseButton(k) then
-    return IsMouseButtonPressed(k)
-  else
-    return IsModifierPressed(k)
-  end
+  return IsModifierPressed(k)
 end
 
 -- 根据相关控制按键的按下状态和 Task 状态，来确定是否需要继续运行
@@ -229,8 +224,8 @@ function Gm:shouldContinue()
   end
 
   if IsMouseButtonPressed(Mouse.Middle) then
-    -- 每次触发 `Gm:stop()` 前都要记录 `_lastTaskEvent`
-    Gm:_updateLastTaskEvent(Mouse.Middle, Types.KeyPressed)
+    -- 记录导致停止的按键，防止后续 Release 阶段误触发关联任务
+    Gm._ghubEventToIgnore = Mouse.Middle
     return false
   end
 
@@ -241,7 +236,7 @@ end
 -- `PressKey` 为一个异步操作，立即调用 `ReleaseKey` 可能会无法成功 Release Key
 -- 最好直接使用 `PressAndReleaseKey` 或在 `PressKey` 和 `ReleaseKey` 之间加上 `Sleep` 延时
 function Gm:pressKey(k)
-  if Gm:isUsableKey(k) == false then
+  if Gm:isKey(k) == false then
     return
   end
 
@@ -254,7 +249,7 @@ function Gm:pressKey(k)
 end
 
 function Gm:releaseKey(k)
-  if Gm:isUsableKey(k) == false then
+  if Gm:isKey(k) == false then
     return
   end
 
@@ -267,7 +262,7 @@ function Gm:releaseKey(k)
 end
 
 function Gm:clickKey(k)
-  if Gm:isUsableKey(k) == false then
+  if Gm:isKey(k) == false then
     return
   end
 
@@ -289,7 +284,7 @@ function Gm:releaseAllKeys()
     end
   end
   -- 释放所有控制键
-  for _, k in pairs(ControlKeys) do
+  for _, k in pairs(ModifierKeys) do
     Gm:releaseKey(k)
   end
   -- 释放所有其它绑定按键
@@ -301,38 +296,46 @@ function Gm:releaseAllKeys()
 end
 
 -- 注册控制键事件
-function Gm:addControlEvent(ctrlKey, evtType, callback)
-  if evtType ~= Types.KeyPressed and evtType ~= Types.KeyReleased then
-    return
-  end
-  if (Gm:isControlKey(ctrlKey) == false) then
+-- ⚠️：Types.KeyPressed 类型的事件会触发系统快捷键，导致严重的意外问题
+-- 所以：只能注册 Types.KeyReleased 类型的事件
+function Gm:onModifierClick(modifier, callback)
+  if Gm:isModifierKey(modifier) == false then
     return
   end
 
-  local evtId = string.format('_%s_%s_', evtType, ctrlKey)
+  local evtType = Types.KeyReleased
+  local evtId = string.format('_%s_%s_', evtType, modifier)
+  local initPressed = Gm:isModifierPressed(modifier)
 
-  table.insert(Gm._controlEvents, {
+  table.insert(Gm._modifierEvents, {
     id = evtId,
     type = evtType,
-    key = ctrlKey,
+    key = modifier,
     callback = callback,
-    -- 用实际物理按键状态初始化，避免任务启动前已存在的控制键状态产生虚假事件边沿
-    isPressed = Gm:isControlKeyPressed(ctrlKey)
+    -- 用实际物理按键状态初始化，避免任务启动前已存在的控制键状态产生虚假事件
+    isPressed = initPressed,
+    -- 如果是按着这个 modifier 启动的，则需要过滤这次按下对应的松开事件
+    initEventToIgnore = initPressed
   })
 end
 
--- 处理 ControlKey 按键事件
-function Gm:_progressControlEvents()
-  for _, evt in ipairs(Gm._controlEvents) do
-    local isPressed = Gm:isControlKeyPressed(evt.key)
+-- 处理 Modifier 按键事件
+function Gm:_progressModifierEvents()
+  for _, evt in ipairs(Gm._modifierEvents) do
+    local isPressed = Gm:isModifierPressed(evt.key)
     if evt.isPressed ~= isPressed then
       evt.isPressed = isPressed
-      -- 从 false 到 true , 代表 modifier 键被按下
-      -- 从 false 到 true 再到 false, 代表 modifier 键被按下然后松开，相当于一个 click 事件
-      if evt.isPressed == true and evt.type == Types.KeyPressed then
-        evt.callback()
-      elseif evt.isPressed == false and evt.type == Types.KeyReleased then
-        evt.callback()
+      if evt.initEventToIgnore then
+        -- 重置为 nil(而不是 false) 代表进行过 ignore 处理
+        evt.initEventToIgnore = nil
+      else
+        -- 从 false 到 true , 代表 modifier 键被按下
+        -- 从 false 到 true 再到 false, 代表 modifier 键被按下然后松开，相当于一个 click 事件
+        if evt.isPressed == true and evt.type == Types.KeyPressed then
+          evt.callback()
+        elseif evt.isPressed == false and evt.type == Types.KeyReleased then
+          evt.callback()
+        end
       end
     end
   end
@@ -406,16 +409,12 @@ end
 function Gm:_launchTask(keyCode)
   Gm:log("launchTask", keyCode)
 
-  local lteKey = Gm._lastTaskEvent.key
-  local lteType = Gm._lastTaskEvent.type
-  -- 每次触发 start 前都要记录 `_lastTaskEvent`
-  Gm:_updateLastTaskEvent(keyCode, Types.KeyReleased)
-  -- 防止 `Pressed` 阶段触发 `Gm:stop()` 后 `Released` 阶段又触发任务进入死循环
-  -- 这种情况下，相当于主动忽略掉这次 `Released` 事件
-  -- 根据设计，`_launchTask` 方法里 `evt.type` 一定是 `Types.ControlKeyReleased`
-  if lteKey == keyCode and lteType == Types.KeyPressed then
+  -- 防止 Pressed 阶段触发 Gm:stop() 后，Released 阶段又触发任务进入死循环
+  if Gm._ghubEventToIgnore == keyCode then
+    Gm._ghubEventToIgnore = nil
     return
   end
+  Gm._ghubEventToIgnore = nil
 
   -- `Gm._running ~= false` 状态表示 Gm 运行还没结束或没有正常结束, 需要主动 `stop`
   if Gm._running ~= false then
@@ -423,7 +422,7 @@ function Gm:_launchTask(keyCode)
   end
 
   -- 防止误操作而意外触发脚本运行，故丢弃在脚本执行结束后一定时间内触发的鼠标事件
-  if Gm:getCurrentTime() - Gm._timestamp < Config.DebounceTime then
+  if Gm:getCurrentTime() - Gm._timestamp < Config.CooldownTime then
     return
   end
 
@@ -450,8 +449,8 @@ function Gm:_start(task)
   if type(Gm._state) ~= Types.Table then
     Gm._state = {}
   end
-  if type(Gm._controlEvents) ~= Types.Table then
-    Gm._controlEvents = {}
+  if type(Gm._modifierEvents) ~= Types.Table then
+    Gm._modifierEvents = {}
   end
   if type(Gm._timers) ~= Types.Table then
     Gm._timers = {}
@@ -461,7 +460,7 @@ function Gm:_start(task)
   Gm._timestamp = 0
 
   task()
-  if next(Gm.actions) or next(Gm._controlEvents) or next(Gm._timers) then
+  if next(Gm.actions) or next(Gm._modifierEvents) or next(Gm._timers) then
     Gm:_tickTask()
   end
 end
@@ -476,9 +475,9 @@ function Gm:_stop()
   end
   -- 这里不能设为 `0`，`_launchTask` 里需要它来判断离上次 stop 过去了多少时间
   Gm._timestamp = Gm:getCurrentTime()
-  -- 这里也不能重置 `_lastTaskEvent`，`_launchTask` 需要它来判断是否是同一个事件的不同阶段
-  -- Gm._lastTaskEvent = {},
-  Gm._controlEvents = {}
+  -- 这里也不能重置 `_ghubEventToIgnore`，`_launchTask` 需要它来判断是否是同一个事件的不同阶段
+  -- Gm._ghubEventToIgnore = nil,
+  Gm._modifierEvents = {}
   Gm._timers = {}
   Gm._state = {}
   -- 这里也不能重置 `_mouseAssignments`，它是一个注册后就不再变动的静态表
@@ -492,15 +491,8 @@ function Gm:_stop()
   Gm:log("Gm stopped.")
 end
 
--- 更新活动控制事件标记
-function Gm:_updateLastTaskEvent(key, type)
-  Gm._lastTaskEvent.key = key
-  Gm._lastTaskEvent.type = type
-end
-
 -- 处理 action 是否 ready 的逻辑
 function Gm:_progressAction(action)
-  local now = Gm._timestamp
   -- 每次帧循环先处理 action 的 onEachTick 方法
   if type(action.onEachTick) == Types.Function then
     action.onEachTick(action)
@@ -509,27 +501,26 @@ function Gm:_progressAction(action)
   if type(action.interval) ~= Types.Number or action.interval < Config.FrameTime then
     action.interval = Config.FrameTime
   end
+
   if type(action.delay) ~= Types.Number or action.delay < 0 then
+    -- delay 小于 0 时逻辑正确但没意义：其它 action 不会延后执行
+    -- 当有这样的需求时，其实是需要别的 action 延后
     action.delay = 0
   end
 
-  -- 初始化 action 时间戳
+  local gts = Gm._timestamp
+  -- 初始化 action 时间逻辑
   if type(action._timestamp) ~= Types.Number then
-    -- 减去 action.interval, 保证第一个循环一定可以触发该 action
-    -- 在没有 `action.delay` 的情况下，`now - action.interval` 可确保能在首个轮次进入 ready 状态
-    action._timestamp = now - action.interval
+    -- 减去 interval 可确保第一次运行时可被立即执行
+    action._timestamp = gts - action.interval
 
-    -- delay 小于 0 时逻辑正确但没意义：其它 action 不会延后执行
-    -- 当有这样的需求时，其实是需要别的 action 延后
     if action.delay > 0 then
       action._timestamp = action._timestamp + action.delay
     end
   end
 
   -- 判断 action 是否 ready
-  if action._isReady ~= true and now - action._timestamp >= action.interval then
-    -- 更新 `action._timestamp` 动作推迟到 `_handleAction` 时
-    -- action._timestamp = now
+  if action._isReady ~= true and gts - action._timestamp >= action.interval then
     action._isReady = true
   end
 end
@@ -544,11 +535,12 @@ function Gm:_handleAction(action)
   -- 先设置 action 运行状态相关字段
   action._timestamp = Gm._timestamp
   action._isReady = false
+
   -- 再执行 action 实际动作
   if type(action.func) == Types.Function then
     action.func(action)
   end
-  if Gm:isUsableKey(action.key) then
+  if Gm:isKey(action.key) then
     Gm:clickKey(action.key)
   end
 end
@@ -575,7 +567,7 @@ function Gm:_tickTask()
   while Gm:shouldContinue() do
     Gm:_progressTick()
     -- 先处理监听事件(事件回调里可能对 action 和 Gm._state 做动态调整)
-    Gm:_progressControlEvents()
+    Gm:_progressModifierEvents()
     -- 再处理定时器(定时器回调里也可能对 action 和 Gm._state 做动态调整)
     Gm:_progressTimers()
     -- 然后处理任务列表
@@ -620,27 +612,17 @@ function Gm:makeCycleIterator(tl)
   return iter
 end
 
--- 立即将指定 action 标记为 ready，使其在下一轮被立即处理
--- 注：它是否能被立即执行还是会受到 `shouldDeferExecution` 的影响。
-function Gm:makeActionReady(action)
-  if type(action) ~= Types.Table then
-    return
-  end
-  -- Only mark action ready if it has a key or a func to execute
-  if action.key == nil and action.func == nil then
-    return
-  end
-
-  action._isReady = true
-end
-
---- 一些常用游戏动作
--- 移动鼠标(Mac 多屏系统)
-function Gm:moveMouse(x, y)
+--- 鼠标坐标归一化转换器 (Coordinate Normalizer)
+-- 将基于基准参考分辨率 (1440x900) 的逻辑坐标转换为对应 OS 平台的鼠标移动指令
+-- macOS: 调用 MoveMouseToVirtual 以兼容虚拟坐标与多屏
+-- Windows: 映射至 0..65535 归一化区间 (按统一比例 x/refWidth * 65535, y/refHeight * 65535 转换，修复原 42 高度比例系数 Bug)
+function Gm:moveMouseRef(refX, refY)
   if Config.os ~= "macOS" then
-    MoveMouseTo(x, y)
+    local normX = Gm:roundNumber((refX / Config.refResolution.width) * Config.windowsCoord.endX)
+    local normY = Gm:roundNumber((refY / Config.refResolution.height) * Config.windowsCoord.endY)
+    MoveMouseTo(normX, normY)
   else
-    MoveMouseToVirtual(x, y)
+    MoveMouseToVirtual(refX, refY)
   end
 end
 
@@ -704,9 +686,14 @@ end
 -- 强制传送(Force Teleport)
 -- 强制移动 → 等待前摇 → 长按传送技能 → 松开
 function Gm:forceTeleport(k)
-  k = k or Keys.ActionBarSkill_2
-  Gm:startForceMove()
-  Gm:sleep(Timing.MS_9F)
+  k = k or Keys.ActionBarSkill_3
+  if Gm:isForceMoving() then
+    Gm:sleep(Timing.MS_3F)
+  else
+    Gm:startForceMove()
+    -- 6F 延迟依然会偶尔跳不出来，但延迟更长会显著影响操作手感
+    Gm:sleep(Timing.MS_6F)
+  end
   Gm:pressKey(k)
   Gm:sleep(Timing.MS_12F)
   Gm:releaseKey(k)
@@ -747,22 +734,22 @@ local Action = {}
 Action.__index = Action
 
 function Action:new(params)
-  local act = setmetatable({}, self)
+  local act      = setmetatable({}, self)
 
-  act._isReady = false
+  act._isReady   = false
   -- `onEachTick` 会在每个帧循环中(检查是否 ready 前)被调用执行
   -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
   act.onEachTick = params.onEachTick
   -- func 会在每次处理 `.key` 之前被调用执行
   -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
   -- 也可替代或配合 `.key` 在里面触发各种动作
-  act.func = params.func
+  act.func       = params.func
   if type(act.func) ~= Types.Function then
     act.func = nil
   end
   -- action 绑定的按键，可以是鼠标或键盘按键
   act.key = params.key
-  if Gm:isUsableKey(act.key) == false then
+  if Gm:isKey(act.key) == false then
     act.key = nil
   end
   -- action 执行的时间间隔，单位为 ms
@@ -804,17 +791,6 @@ local Inventory = {
   Cols       = 8,
 }
 
--- 针对 Windows 平台背包坐标设置
-if Config.os ~= "macOS" then
-  local widthRatio     = Config.windowsCoord.endX / Config.macResolution.width
-  local heightRatio    = Config.windowsCoord.endY / Config.macResolution.height
-
-  Inventory.StartX     = Gm:roundNumber(widthRatio * 1068)
-  Inventory.StartY     = Gm:roundNumber(heightRatio * 482)
-  Inventory.SlotWidth  = Gm:roundNumber(widthRatio * 38)
-  Inventory.SlotHeight = Gm:roundNumber(heightRatio * 42)
-end
-
 -- Kadala 赌博
 -- 血岩碎片上限 2000，可使用背包格子数量为 6 * 8 = 48
 -- 赌占用格子最少(1格)的首饰物品最大可点次数为 2000 / 50 = 40 次
@@ -843,7 +819,7 @@ local function SalvageItems()
     local rp = math.floor(i / cols)
     -- 计算处于第几列(xp)
     local cp = i % cols
-    Gm:moveMouse(xp + cp * w, yp + rp * h)
+    Gm:moveMouseRef(xp + cp * w, yp + rp * h)
 
     Gm:sleep()
     -- 触发销毁确认框
@@ -862,7 +838,7 @@ end
 
 -- 鼠标中键独立绑定固定功能(不推荐再修改)
 Gm:setMouseAssignment(Mouse.Middle, function()
-  if Gm:isControlKeyPressed(ControlKeys.Alt) then
+  if Gm:isModifierPressed(ModifierKeys.Alt) then
     SalvageItems()
   else
     KadalaGamble()
@@ -892,7 +868,7 @@ function Builds.Wiz:FirebirdExplosiveBlast()
     channeling = false
     Gm:releaseKey(Mouse.Right)
   end
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Alt, function()
     if channeling then
       stopChanneling()
     else
@@ -900,8 +876,8 @@ function Builds.Wiz:FirebirdExplosiveBlast()
     end
   end)
 
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
-    Gm:clickKey(Keys.ActionBarSkill_2)
+  Gm:onModifierClick(ModifierKeys.Ctrl, function()
+    Gm:clickKey(Keys.ActionBarSkill_3)
   end)
 
   Gm.actions = {
@@ -910,7 +886,7 @@ function Builds.Wiz:FirebirdExplosiveBlast()
       interval = Timing.MS_3F,
       func = function()
         if channeling then
-          Gm:clickKey(Keys.ActionBarSkill_3)
+          Gm:clickKey(Keys.ActionBarSkill_2)
         end
       end,
     }),
@@ -954,7 +930,7 @@ function Builds.Wiz:Meteor()
     Gm:releaseKey(Mouse.Right)
     inMeteor = false
   end
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Alt, function()
     if inMeteor then
       stopMeteor()
       Gm:startForceMove()
@@ -965,12 +941,12 @@ function Builds.Wiz:Meteor()
     end
   end)
   -- free move
-  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function()
-    stopMeteor()
+  Gm:onModifierClick(ModifierKeys.Shift, function()
     Gm:stopForceMove()
+    stopMeteor()
   end)
 
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Ctrl, function()
     stopMeteor()
     Gm:forceTeleport()
   end)
@@ -1002,7 +978,7 @@ function Builds.Wiz:Meteor()
     Action:new({
       -- 随缘自动触发
       interval = 1000 * 2.5,
-      key = Keys.ActionBarSkill_3,
+      key = Keys.ActionBarSkill_2,
       shouldDeferExecution = function()
         return inMeteor == false
       end
@@ -1035,7 +1011,7 @@ function Builds.DH:DevouringStrafe()
       Gm:pressKey(Mouse.Right)
     end
   end
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, toggleStrafe)
+  Gm:onModifierClick(ModifierKeys.Alt, toggleStrafe)
 
   Gm.actions = {
     -- 战宠(Companion)
@@ -1109,7 +1085,7 @@ function Builds.DH:ImpaleStrafe()
       Gm:pressKey(Mouse.Right)
     end
   end
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, toggleStrafe)
+  Gm:onModifierClick(ModifierKeys.Ctrl, toggleStrafe)
 
   Gm.actions = {
     -- 烟雾(Smoke Screen - Vanishing Powder)
@@ -1160,7 +1136,7 @@ function Builds.DH:NatalyaSpikeTrap()
     Gm:releaseKey(Mouse.Right)
     spikeTrapMode = false
   end
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Alt, function()
     if spikeTrapMode then
       stopSpikeTrap()
       Gm:startForceMove()
@@ -1172,7 +1148,7 @@ function Builds.DH:NatalyaSpikeTrap()
   end)
 
   -- 拉怪
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Ctrl, function()
     local isForceMoving = Gm:isForceMoving()
     local isForceStanding = Gm:isForceStanding()
     local isSpikeTrapMode = spikeTrapMode
@@ -1199,7 +1175,7 @@ function Builds.DH:NatalyaSpikeTrap()
     end
   end)
   -- free move
-  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Shift, function()
     stopSpikeTrap()
     Gm:stopForceMove()
   end)
@@ -1253,9 +1229,8 @@ end
 --- MONK 武僧
 -- 散件敲钟(圣化)
 function Builds.Monk:SanctLoDWoL()
-  Gm:addControlEvent(
-    ControlKeys.Alt,
-    Types.KeyPressed,
+  Gm:onModifierClick(
+    ModifierKeys.Alt,
     function()
       Gm:startForceStand()
       -- 开禅定
@@ -1304,7 +1279,7 @@ end
 -- 正义天拳
 function Builds.Crus:AoVFist()
   -- 强制移动切换
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyReleased, function()
+  Gm:onModifierClick(ModifierKeys.Alt, function()
     if Gm:isForceMoving() then
       Gm:stopForceMove()
       Gm:clearTimeout('tp')
@@ -1320,23 +1295,25 @@ function Builds.Crus:AoVFist()
       Gm:startForceMove()
     end, Timing.TownPortal)
   end
-  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, townPortal)
+  Gm:onModifierClick(ModifierKeys.Shift, townPortal)
 
   -- 跑马
   local function beforeSteedCharge()
     Gm:stopForceMove()
     Gm:clickKey(Keys.ActionBarSkill_1)
-    Gm:clickKey(Keys.ActionBarSkill_3)
+    Gm:clickKey(Keys.ActionBarSkill_2)
     Gm:clickKey(Keys.ActionBarSkill_4)
-    Gm:sleep(Timing.MS_3F)
+    Gm:sleep(Timing.MS_6F)
   end
   local function steedCharge()
-    Gm:clickKey(Keys.ActionBarSkill_2)
+    Gm:clickKey(Keys.ActionBarSkill_3)
     Gm:sleep(Timing.MS_3F)
     Gm:startForceMove()
   end
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, beforeSteedCharge)
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyReleased, steedCharge)
+  Gm:onModifierClick(ModifierKeys.Ctrl, function()
+    beforeSteedCharge()
+    steedCharge()
+  end)
 
   -- 宏停止时，清理可能存在回城状态
   Gm.teardown = function()
@@ -1361,7 +1338,7 @@ function Builds.Nec:RathmaAotD()
     Gm:releaseKey(Mouse.Right)
     siphoning = false
   end
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Alt, function()
     if siphoning then
       stopSiphon()
       Gm:startForceMove()
@@ -1372,13 +1349,13 @@ function Builds.Nec:RathmaAotD()
     end
   end)
   -- free move
-  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Shift, function()
     stopSiphon()
     Gm:stopForceMove()
   end)
 
   -- Blood Rush
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Ctrl, function()
     stopSiphon()
     Gm:forceTeleport()
   end)
@@ -1386,7 +1363,7 @@ function Builds.Nec:RathmaAotD()
   Gm.actions = {
     -- Command Skeletons
     Action:new({
-      key = Keys.ActionBarSkill_3,
+      key = Keys.ActionBarSkill_2,
       onEachTick = function(sf)
         if siphoning then
           sf.interval = 1000
@@ -1434,7 +1411,7 @@ function Builds.Nec:DeathNova()
     Gm:releaseKey(Mouse.Right)
     siphoning = false
   end
-  Gm:addControlEvent(ControlKeys.Alt, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Alt, function()
     if siphoning then
       stopSiphon()
       Gm:startForceMove()
@@ -1445,13 +1422,13 @@ function Builds.Nec:DeathNova()
     end
   end)
   -- free move
-  Gm:addControlEvent(ControlKeys.Shift, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Shift, function()
     Gm:stopForceMove()
     stopSiphon()
   end)
 
   -- Blood Rush
-  Gm:addControlEvent(ControlKeys.Ctrl, Types.KeyPressed, function()
+  Gm:onModifierClick(ModifierKeys.Ctrl, function()
     stopSiphon()
     Gm:forceTeleport()
   end)
@@ -1463,7 +1440,7 @@ function Builds.Nec:DeathNova()
       interval = Timing.MS_1F * 40,
       func = function()
         if siphoning then
-          Gm:clickKey(Keys.ActionBarSkill_3)
+          Gm:clickKey(Keys.ActionBarSkill_2)
         end
       end
     }),
@@ -1483,10 +1460,10 @@ end)
 
 -- 侧后键
 Gm:setMouseAssignment(4, function()
-  Builds.Nec:RathmaAotD()
+  Builds.Nec:DeathNova()
 end)
 
 -- 侧前键
 Gm:setMouseAssignment(5, function()
-  Builds.Nec:DeathNova()
+  Builds.Nec:RathmaAotD()
 end)

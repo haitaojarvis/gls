@@ -35,7 +35,7 @@ end)
 ```
 
 ## 其它 Build
-参考 `Builds.Wiz:VryLollipop`, `Builds.DH:DevouringStrafe`, `Builds.Monk:LoDWoL`, `Builds.Crus:AoVFist` 等 Build 的实现
+参考 `Builds.DH:DevouringStrafe`, `Builds.Monk:LoDWoL`, `Builds.Crus:AoVFist` 等 Build 的实现
 
 
 ## Macbook(Pro) 推荐的键位配置
@@ -47,24 +47,23 @@ end)
 
 1. 手动模式的键位配置
   * 适合 “开荒”、“挑战秘境” 等 BD 不成形没法用宏的场景
-  * 适合 “塔格奥新星” 等鼠标宏派不上用场的场景
 2. 宏模式的键位配置
   * 像 “冰吞” 一样可以完全交给鼠标宏来点击和攻击，自己只需要偶尔点下控制键切换输出或跑路模式
   * 类似 “散钟”、“娜塔亚陷阱” 这类需要鼠标宏配合手工操作才能顺畅游戏的玩法
 
 为了 “尽量少改键位” 并良好适配上面 2 中模式，强烈推荐参考下面的键位配置:
 
-- 动作条技能 1: 默认的 `1` 和 `a`
-  * 手动模式用 `1`
+- 动作条技能 2: 默认的 `2` 和 `a`
+  * 手动模式用 `2`
   * 宏模式用 `a`
 
-- 动作条技能 2: 默认的 `2` 和 `x`
-  * 手动模式用 `2`
+- 动作条技能 3: 默认的 `3` 和 `x`
+  * 手动模式用 `3`
   * 宏模式用 `x`
 
 - 强制移动: `spacebar` 和 `z`
   * 手动模式下用 `spacebar`
-  * 宏模式下用 `z`
+  * 宏模式下按习惯自由选择按 `z`
 
 - 强制站立: `c`
   * 手动模式下用 `c`
@@ -105,9 +104,11 @@ end)
 
  - 所有键盘 keyname 都为 `string`, 所有鼠标 keycode 都为 `number`, 这个特点可以用来区分鼠标和键盘按键 
 
-- IsKeyLockOn 有效但不好用
-  * `capslock` 键在 Mac 下默认是切换输入法，不要使用！
-  * `scrolllock` 和 `numlock` 两个键位置不好，也不要使用！
+- IsKeyLockOn 有效但不是特别有用
+  * `capslock` 
+    - 在 Mac 下默认是输入法切换，苹果对它做了延时处理，导致 `IsKeyLockOn("capslock")` 返回的状态变化很混乱
+    - ⚠️：因此，它不适合用来做任何事情
+  * `scrolllock` 和 `numlock` 两个键位置不好(Macbook 键盘上没有)，也不要使用！
 
 - 鼠标按键 API 和鼠标事件
   * 所有鼠标按键相关 API 都只支持 `1~5` 这 5 个按键码
@@ -168,7 +169,7 @@ end)
   * 类似 `Gm:TownPortal()` ，跟随具体场景设置延时更合适
 
 - 关于 “长时间 Action/ControlKeyEvent”
-  * 长时间运行的 `Action/ControlKeyEvent` 会严重影响操作流畅性，要尽量避免
+  * 长时间运行的 `Action/ModifierClick` 会严重影响操作流畅性，要尽量避免
   * 如果无法避免，尽量维持在 `1300ms` 以下可极大改善阻滞感
   * 保持操作节奏，一通乱按不但加巨阻滞感，也无法打出伤害
 
