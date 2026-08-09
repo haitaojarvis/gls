@@ -856,6 +856,23 @@ local Builds = {
 }
 
 --- WIZ 法师
+--- 公用基础 Buff
+local function wizBuffs()
+    local isForceMoving = Gm:isForceMoving()
+    Gm:startForceStand()
+    Gm:sleep(Timing.MS_3F)
+    -- 魔星(Familiar)
+    Gm:clickKey(Mouse.Left)
+    -- 风暴护甲(Storm Armor)
+    Gm:clickKey(Keys.ActionBarSkill_1)
+    -- 魔法武器(Magic Weapon)
+    Gm:clickKey(Keys.ActionBarSkill_4)
+    Gm:sleep(Timing.MS_3F)
+    Gm:stopForceStand()
+    if isForceMoving then
+      Gm:startForceMove()
+    end
+end
 -- 火鸟聚能爆破
 function Builds.Wiz:FirebirdExplosiveBlast()
   -- 切换引导状态
@@ -893,20 +910,7 @@ function Builds.Wiz:FirebirdExplosiveBlast()
     Action:new({
       interval = 1000 * 60 * 5,
       func = function()
-        local isForceMoving = Gm:isForceMoving()
-        Gm:startForceStand()
-        Gm:sleep(Timing.MS_3F)
-        -- 魔星(Familiar)
-        Gm:clickKey(Mouse.Left)
-        -- 风暴护甲(Storm Armor)
-        Gm:clickKey(Keys.ActionBarSkill_1)
-        -- 魔法武器(Magic Weapon)
-        Gm:clickKey(Keys.ActionBarSkill_4)
-        Gm:sleep(Timing.MS_3F)
-        Gm:stopForceStand()
-        if isForceMoving then
-          Gm:startForceMove()
-        end
+        wizBuffs()
       end,
       shouldDeferExecution = function()
         return channeling == true
@@ -955,20 +959,7 @@ function Builds.Wiz:Meteor()
     Action:new({
       interval = 1000 * 60 * 2.5,
       func = function()
-        local isForceMoving = Gm:isForceMoving()
-        Gm:startForceStand()
-        Gm:sleep(Timing.MS_3F)
-        -- 魔星(Familiar)
-        Gm:clickKey(Mouse.Left)
-        -- 风暴护甲(Storm Armor)
-        Gm:clickKey(Keys.ActionBarSkill_1)
-        -- 魔法武器(Magic Weapon)
-        Gm:clickKey(Keys.ActionBarSkill_4)
-        Gm:sleep(Timing.MS_3F)
-        Gm:stopForceStand()
-        if isForceMoving then
-          Gm:startForceMove()
-        end
+        wizBuffs()
       end,
       shouldDeferExecution = function()
         return inMeteor == true
