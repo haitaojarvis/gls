@@ -695,7 +695,7 @@ function Gm:forceTeleport(k)
     Gm:sleep(Timing.MS_6F)
   end
   Gm:pressKey(k)
-  Gm:sleep(Timing.MS_12F)
+  Gm:sleep(Timing.MS_9F)
   Gm:releaseKey(k)
 end
 
@@ -1022,7 +1022,7 @@ function Builds.DH:DevouringStrafe()
       delay = 5000,
       func = function()
         if strafing then
-          Gm:clickKey(Keys.ActionBarSkill_3)
+          Gm:clickKey(Keys.ActionBarSkill_2)
         end
       end
     }),
@@ -1031,7 +1031,7 @@ function Builds.DH:DevouringStrafe()
       interval = 1000,
       func = function()
         if strafing then
-          Gm:clickKey(Keys.ActionBarSkill_2)
+          Gm:clickKey(Keys.ActionBarSkill_3)
         end
       end
     }),
