@@ -215,6 +215,11 @@ function Gm:isModifierPressed(k)
   return IsModifierPressed(k)
 end
 
+--  很适合用来做 “战斗状态切换” 等 *持续状态切换判断*
+function Gm:isCapsLockOn()
+  return IsKeyLockOn('"capslock')
+end
+
 -- 根据相关控制按键的按下状态和 Task 状态，来确定是否需要继续运行
 -- 注：长时间循环(需要手工停止)的宏脚本里，一定要调用这个方法进行宏开关的状态判断
 -- 因为会运行在长时间运行的简单脚本里，所以这里不对 `Gm.actions`,`Gm._controlEvents` 等属性做是否为空的检测
@@ -1019,7 +1024,7 @@ function Builds.DH:DevouringStrafe()
     -- 蓄势待发(Preparation)
     Action:new({
       interval = Timing.MS_3F,
-      delay = 5000,
+      delay = 7500,
       func = function()
         if strafing then
           Gm:clickKey(Keys.ActionBarSkill_2)
@@ -1028,7 +1033,7 @@ function Builds.DH:DevouringStrafe()
     }),
     -- 烟雾(Smoke Screen)
     Action:new({
-      interval = 1000,
+      interval = 1250,
       func = function()
         if strafing then
           Gm:clickKey(Keys.ActionBarSkill_3)
@@ -1046,7 +1051,8 @@ function Builds.DH:DevouringStrafe()
     }),
     -- 追踪箭(Hungering Arrow)
     Action:new({
-      interval = Timing.MS_1F * 10,
+      -- 高于 10F 在割草时容易掉动能
+      interval = Timing.MS_9F,
       delay = Timing.MS_20F,
       func = function()
         if strafing then
@@ -1354,12 +1360,12 @@ function Builds.Nec:RathmaAotD()
   Gm.actions = {
     -- Command Skeletons
     Action:new({
-      key = Keys.ActionBarSkill_2,
+      key = Keys.ActionBarSkill_1,
       onEachTick = function(sf)
         if siphoning then
-          sf.interval = 1000
+          sf.interval = 1500
         else
-          sf.interval = 2000
+          sf.interval = 2500
         end
       end
     }),
@@ -1386,7 +1392,7 @@ function Builds.Nec:RathmaAotD()
   }
 
   -- initial
-  startSiphon()
+  Gm:startForceMove()
 end
 
 -- 死亡新星
@@ -1428,7 +1434,7 @@ function Builds.Nec:DeathNova()
     -- Bone Armor
     Action:new({
       delay = 100,
-      interval = Timing.MS_1F * 40,
+      interval = 1000,
       func = function()
         if siphoning then
           Gm:clickKey(Keys.ActionBarSkill_2)
@@ -1446,15 +1452,15 @@ end
 -- =============================================================================
 -- DPI 切换键
 Gm:setMouseAssignment(6, function()
-  Builds.Crus:AoVFist()
+  Builds.DH:DevouringStrafe()
 end)
 
 -- 侧后键
 Gm:setMouseAssignment(4, function()
-  Builds.Nec:DeathNova()
+  Builds.DH:NatalyaSpikeTrap()
 end)
 
 -- 侧前键
 Gm:setMouseAssignment(5, function()
-  Builds.Nec:RathmaAotD()
+  Builds.Nec:DeathNova()
 end)

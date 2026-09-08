@@ -13,5 +13,6 @@
     "IsMouseButtonPressed",
     "IsModifierPressed",
     "OutputLogMessage",
+    "IsKeyLockOn"
   ]
 }
