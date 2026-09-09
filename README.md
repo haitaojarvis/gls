@@ -30,12 +30,12 @@ dofile("%s/gls.lua")
 2. 然后用 `Gm:setMouseAssignment(keyCode, task)` 方法来绑定宏任务
 ```lua
 Gm:setMouseAssignment(4, function()
-  Builds.Monk:LoDWoL()
+  Builds.Monk:SanctLoDWoL()
 end)
 ```
 
 ## 其它 Build
-参考 `Builds.DH:DevouringStrafe`, `Builds.Monk:LoDWoL`, `Builds.Crus:AoVFist` 等 Build 的实现
+参考 `Builds.DH:DevouringStrafe`, `Builds.DH:NatalyaSpikeTrap`, `Builds.Monk:SanctLoDWoL`, `Builds.Crus:AoVFist` 等 Build 的实现
 
 
 ## Macbook(Pro) 推荐的键位配置
@@ -127,53 +127,53 @@ end)
 - 关于 “多功能控制键“
   * 目前的 “多功能” 主要指 *绑定一个宏任务的同时，在宏任务运行期间通过 `Pressed` 触发 `Gm:stop()` 逻辑*
   * 如果不做额外控制，会出现 *Pressed 结束一个动作后 Released 又触发动作* 的问题，进入死循环
-  * 所以增加了一个 `Gm._updateLastRunningEvent` 标记来记录触发 `Gm._running` 状态变化的按键信息
+  * 所以增加了一个 `Gm._ghubEventToIgnore` 标记来记录触发宏停止的按键 keyCode
   * 通过记录的信息可以分析当前按键动作和上次按键动作的关系：是不是同一按键，是不是从 “结束(Press)” 到 “触发(Release)”
-  * 如果 “按下(`PressAndRelease`)” 动作的 `Pressed` 部分已经用作触发 `Gm:stop()`, 就要阻止后续的 `Released` 动作触发绑定的宏任务，从而解决上面提到的 “任务无法终止” 等问题
+  * 如果 “按下(`PressAndRelease`)” 动作的 `Pressed` 部分已经用作触发 `Gm:_stop()`, 就要阻止后续的 `Released` 动作触发绑定的宏任务，从而解决上面提到的 “任务无法终止” 等问题
   * 目前来看 `Mouse.Middle` 最适合做多功能控制键
   * `Mouse.Right` 可酌情做多功能控制键，虽然不在 `OnEvent` 监听它无法触发宏任务，但它本身的右键技能 + 绑定任务 也算是一个多功能控制键
   * 为鼠标按键绑定控制事件，请只使用 `Pressed` - 因为 `Released` 用于接收 `OnEvent`
 
-## 功能设计时的一些记录
+## 功能设计与架构规范
 - GHub 的 `Sleep` 方法不支持小数和负数(各种 0 值除外)
 
 - GHub 的 `PlayMacro/AbortMacro` 等方法只支持 **绑定到按键的录制宏**，在脚本里并不能用
 
 - GHub 的 “宏” 只支持录制不支持脚本，也就意味着无法通过 UI 界面绑定脚本宏
 
-- 关于 `pcall`
-  * 只对 `Gm:_start` 使用 `pcall` 并打印错误信息，这样才容易确定宏脚本是没问题的
+- 关于异常保护与 `pcall`
+  * 对 `Gm:_start` 以及 `Gm:onStop` 注册的所有清理回调均使用 `pcall` 保护并打印日志，避免异常导致 GHub 卡死或按键卡键
 
-- 关于脚本引擎的 “暂停状态”
-  * 暂停状态使用场景很少很少，不值得增加复杂性 - 日常操作和实现上的双重复杂性
-  * 对于类似 “过图后重对元素戒” 的场景，绑定一个 “对元素” 的控制键事件就行
-
-- 如何 “对元素”
-  * 注册一个控制按键事件并调用 `Gm:makeActionReady` 标记一下该 action
+- 关于 Action 与流水线创建
+  * 推荐使用工厂方法 `Gm:createActions({ ... })` 或 `Gm:createAction(params)` 进行声明式创建
+  * 支持属性：`interval`（执行间隔）、`delay`（首次延时）、`key`（按键）、`func`（执行函数）、`onEachTick`（每帧动态计算）、`shouldDeferExecution`（暂缓执行）
 
 - 关于 `action:shouldDeferExecution`
   * 返回 `true` 表示当前 action 进入 “稍后再试” 状态
-  * 不同于 "暂停状态"，Defer 时脚本引擎会持续运行并跳过已经 ready 的 action,
+  * 不同于 "暂停状态"，Defer 时脚本引擎会持续运行并跳过已经 ready 的 action
   * 等 Defer 状态退出后被 “稍后再试” 的 action 会被立刻执行
   * 这通常用于 “捡东西”、“读条” 和其它一些需要 “防打断” 但又不值当停止宏的场景
 
-- 关于定时器 `timer/setTimeout`
-  * 目前设计，timer 背后也是 Action, 但不受 `shouldDeferExecution` 约束
+- 关于时序连招 `Sequence`
+  * 串行时间轴执行器，用于处理有严格时序/硬直/前摇的多步动作（如散钟 74 帧敲钟、拉怪、回城减伤、起手动作等）
+  * 纯无阻塞状态机架构（`idle` $\rightarrow$ `delay` $\rightarrow$ `step` $\rightarrow$ `interval`），时间轴推进基于每帧时钟差，零 `Sleep()` 调用
+  * 支持 `loop` 自动循环、`interval` 轮次间隔（支持数字/动态迭代器/函数）、`delay` 首次启动延时
+  * 完整的生命周期钩子：`onStart`（启动时）、`onEnd`（结束或被打断时）、`onRoundStart`（每轮开始）、`onRoundEnd`（每轮结束）
+  * 提供 `seq:start()`, `seq:stop()`, `seq:toggle()`, `seq:isRunning()` 控制接口，支持下一帧毫秒级即时打断
 
-- 关于 “按键按下持续时间”
-  * 这种需求很少很少，可通过一对儿加 `delay` 的 action 来实现，不再增加复杂性
-  * 甚至按下后先 `sleep()` 然后再释放也不是不行
+- 关于生命周期清理 `Gm:onStop(callback)`
+  * 用于注册宏任务停止时的清理函数（如取消回城、释放特殊按键等）
+  * 在宏停止时先触发所有 `onStop` 回调，再自动停止并清理所有活跃的 `Sequence`（触发其 `onEnd` 钩子），最后调用 `Gm:releaseAllKeys()` 兜底释放所有按键，杜绝卡键
+
+- 关于 “长时间连招与多步操作”
+  * 严禁在 `onModifierClick` 等控制键回调中写长串阻塞式 `Gm:sleep()`，这会导致宏主循环在休眠期间完全瘫痪、无法响应中断
+  * 所有多步连招必须封装为 `Gm:createSequence`，交由主循环流水线非阻塞推进，既能保证操作时序精准，又能随时随地打断与复原状态
 
 - 关于 “强制站立/移动”
-  * 不在 “强制移动” 和 “强制站立” 相关方法里进行 “sleep 延时”，因为不同场景需要的 ”延时“ 需求不同
-  * 类似 `Gm:TownPortal()` ，跟随具体场景设置延时更合适
-
-- 关于 “长时间 Action/ControlKeyEvent”
-  * 长时间运行的 `Action/ModifierClick` 会严重影响操作流畅性，要尽量避免
-  * 如果无法避免，尽量维持在 `1300ms` 以下可极大改善阻滞感
-  * 保持操作节奏，一通乱按不但加巨阻滞感，也无法打出伤害
+  * 不在 “强制移动” 和 “强制站立” 基础方法里进行 “sleep 延时”，因为不同场景需要的 ”延时“ 需求不同
+  * 若技能或动作需要前置站稳或后置恢复，通过 `Sequence` 的步骤 `wait` 或 `onStart` / `onEnd` 钩子来配合最为安全和自然
 
 - 关于 `action.key` 支持 “多键”
-  * 这种需求很少很少，可通过 `action.func()` 来实现，不再增加复杂性
+  * 这种需求很少很少，可通过 `action.func()` 或 `Sequence` 来实现，不再增加复杂性
   * 另外也无法处理 `PressKey()` 等 API 按下多键时的顺序和间隔时间
   * 鼠标按键相关的 按下/释放 按键函数不支持多键

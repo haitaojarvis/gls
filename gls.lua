@@ -7,6 +7,32 @@
 
 
 -- =============================================================================
+-- GHub 原生 C API 与常用全局函数局部化缓存 (提升热循环执行性能)
+-- =============================================================================
+local GetRunningTime = GetRunningTime
+local Sleep = Sleep
+local IsModifierPressed = IsModifierPressed
+local IsMouseButtonPressed = IsMouseButtonPressed
+local PressKey = PressKey
+local ReleaseKey = ReleaseKey
+local PressAndReleaseKey = PressAndReleaseKey
+local PressMouseButton = PressMouseButton
+local ReleaseMouseButton = ReleaseMouseButton
+local PressAndReleaseMouseButton = PressAndReleaseMouseButton
+local MoveMouseTo = MoveMouseTo
+local MoveMouseToVirtual = MoveMouseToVirtual
+local IsKeyLockOn = IsKeyLockOn
+local OutputLogMessage = OutputLogMessage
+
+local type = type
+local ipairs = ipairs
+local pairs = pairs
+local pcall = pcall
+local setmetatable = setmetatable
+local math_floor = math.floor
+local math_ceil = math.ceil
+
+-- =============================================================================
 -- 游戏键位配置部分
 -- =============================================================================
 local Keys = {
@@ -126,6 +152,207 @@ local Types = {
   KeyReleased = "released"
 }
 
+-- =============================================================================
+-- Action (并行周期触发器)
+-- =============================================================================
+local Action = {}
+Action.__index = Action
+
+function Action:new(params)
+  local act = setmetatable({}, self)
+
+  params = type(params) == Types.Table and params or {}
+
+  act._isReady = false
+  act._timestamp = nil
+
+  -- `onEachTick` 会在每个帧循环中(检查是否 ready 前)被调用执行
+  -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
+  act.onEachTick = type(params.onEachTick) == Types.Function and params.onEachTick or nil
+
+  -- func 会在每次处理 `.key` 之前被调用执行
+  -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
+  -- 也可替代或配合 `.key` 在里面触发各种动作
+  act.func = type(params.func) == Types.Function and params.func or nil
+
+  -- action 绑定的按键，可以是鼠标或键盘按键
+  act.key = Gm:isKey(params.key) and params.key or nil
+
+  -- 构造期规范化 interval 与 delay（消除每帧重复校验）
+  local interval = params.interval
+  if type(interval) ~= Types.Number or interval < Config.FrameTime then
+    interval = Config.FrameTime
+  end
+  act.interval = interval
+
+  local delay = params.delay
+  if type(delay) ~= Types.Number or delay < 0 then
+    delay = 0
+  end
+  act.delay = delay
+
+  -- `shouldDeferExecution() => true` 时当前 action 进入 “稍后执行” 状态
+  -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
+  if type(params.shouldDeferExecution) == Types.Function then
+    act.shouldDeferExecution = params.shouldDeferExecution
+  else
+    act.shouldDeferExecution = function() return false end
+  end
+
+  return act
+end
+
+-- =============================================================================
+-- Sequence (串行时序流水线执行器)
+-- =============================================================================
+local Sequence = {}
+Sequence.__index = Sequence
+
+function Sequence:new(steps, options)
+  local seq = setmetatable({}, self)
+
+  seq.steps = type(steps) == Types.Table and steps or {}
+  options = type(options) == Types.Table and options or {}
+
+  seq.loop = options.loop == true
+  seq.interval = options.interval or 0 -- 循环间隔，支持 number 或 function/iter
+  seq.delay = options.delay or 0       -- 首次启动延时
+  seq.onStart = options.onStart
+  seq.onEnd = options.onEnd
+  seq.onRoundStart = options.onRoundStart
+  seq.onRoundEnd = options.onRoundEnd
+
+  -- 内部运行状态: "idle", "delay", "step", "interval"
+  seq._state = "idle"
+  seq._stepIndex = 1
+  seq._timestamp = 0
+  seq._currentWait = 0
+
+  return seq
+end
+
+function Sequence:isRunning()
+  return self._state ~= "idle"
+end
+
+function Sequence:start()
+  if self:isRunning() then
+    return
+  end
+
+  self._stepIndex = 1
+  self._timestamp = Gm._timestamp
+
+  if type(self.onStart) == Types.Function then
+    self.onStart(self)
+  end
+
+  if type(self.delay) == Types.Number and self.delay > 0 then
+    self._state = "delay"
+    self._currentWait = self.delay
+  else
+    self:_startRound()
+  end
+end
+
+function Sequence:_startRound()
+  if #self.steps == 0 then
+    self:stop()
+    return
+  end
+
+  self._stepIndex = 1
+  self._state = "step"
+
+  if type(self.onRoundStart) == Types.Function then
+    self.onRoundStart(self)
+  end
+
+  self:_executeStep(1)
+end
+
+function Sequence:_executeStep(index)
+  local step = self.steps[index]
+  if not step then
+    self:_finishRound()
+    return
+  end
+
+  -- 执行当前 step 的动作
+  if type(step.func) == Types.Function then
+    step.func(step)
+  end
+  if Gm:isKey(step.key) then
+    Gm:clickKey(step.key)
+  end
+
+  -- 计算当前 step 的等待时间
+  local waitTime = step.wait
+  if type(waitTime) == Types.Function then
+    waitTime = waitTime()
+  end
+  if type(waitTime) ~= Types.Number or waitTime < 0 then
+    waitTime = 0
+  end
+
+  self._currentWait = waitTime
+  self._timestamp = Gm._timestamp
+end
+
+function Sequence:_finishRound()
+  if type(self.onRoundEnd) == Types.Function then
+    self.onRoundEnd(self)
+  end
+
+  if self.loop then
+    local intVal = self.interval
+    if type(intVal) == Types.Function then
+      intVal = intVal()
+    elseif type(intVal) == Types.Table and type(intVal.next) == Types.Function then
+      intVal = intVal.next()
+    end
+    if type(intVal) ~= Types.Number or intVal <= 0 then
+      intVal = 0
+    end
+
+    if intVal > 0 then
+      self._state = "interval"
+      self._currentWait = intVal
+      self._timestamp = Gm._timestamp
+    else
+      -- 无等待，立即开启下一轮
+      self:_startRound()
+    end
+  else
+    self:stop()
+  end
+end
+
+function Sequence:stop()
+  if not self:isRunning() then
+    return
+  end
+
+  self._state = "idle"
+  self._stepIndex = 1
+  self._timestamp = 0
+
+  if type(self.onEnd) == Types.Function then
+    self.onEnd(self)
+  end
+end
+
+function Sequence:toggle()
+  if self:isRunning() then
+    self:stop()
+  else
+    self:start()
+  end
+end
+
+-- =============================================================================
+--  Gm 框架核心
+-- =============================================================================
 Gm = {
   -- Gm 是否处于运行中
   _running = false,
@@ -136,17 +363,16 @@ Gm = {
   _ghubEventToIgnore = nil,
   -- 当前 task 监听的控制按键事件
   _modifierEvents = {},
-  -- 当前 task 注册的定时器
-  _timers = {},
+  -- 当前 task 注册的时序执行器 (Sequences)
+  _sequences = {},
   -- 当前 task 可存取的数据
   _state = {},
   -- 为鼠标按键分配的 Task 列表
   _mouseAssignments = {},
-
-  -- 当前 task 的 Action 配置
-  actions = {},
-  -- 当 Gm 结束当前 task 之前会自动调用的一个方法，可用于清理 task 运行状态等操作
-  teardown = function() end,
+  -- 当前 task 注册的停止/清理回调列表
+  _stopCallbacks = {},
+  -- 当前 task 注册的 Action 列表
+  _actions = {},
 }
 
 function Gm:log(...)
@@ -170,7 +396,7 @@ function Gm:getCurrentTime()
 end
 
 function Gm:roundNumber(num)
-  return math.floor(num + 0.5)
+  return math_floor(num + 0.5)
 end
 
 function Gm:sleep(ms)
@@ -179,7 +405,7 @@ function Gm:sleep(ms)
   end
   -- 由于 `Sleep()` 不支持小数和负数(各种 0 值除外），这里需要向上取整
   -- 向上取整可以保证 “至少 sleep 多少时间”，逻辑上也比较合理
-  ms = math.ceil(ms)
+  ms = math_ceil(ms)
   Sleep(ms)
 end
 
@@ -215,14 +441,13 @@ function Gm:isModifierPressed(k)
   return IsModifierPressed(k)
 end
 
---  很适合用来做 “战斗状态切换” 等 *持续状态切换判断*
+-- 很适合用来做 “战斗状态切换” 等 *持续状态切换判断*
 function Gm:isCapsLockOn()
-  return IsKeyLockOn('"capslock')
+  return IsKeyLockOn("capslock")
 end
 
 -- 根据相关控制按键的按下状态和 Task 状态，来确定是否需要继续运行
 -- 注：长时间循环(需要手工停止)的宏脚本里，一定要调用这个方法进行宏开关的状态判断
--- 因为会运行在长时间运行的简单脚本里，所以这里不对 `Gm.actions`,`Gm._controlEvents` 等属性做是否为空的检测
 function Gm:shouldContinue()
   if Gm._running ~= true then
     return false
@@ -237,9 +462,7 @@ function Gm:shouldContinue()
   return true
 end
 
--- 注：
--- `PressKey` 为一个异步操作，立即调用 `ReleaseKey` 可能会无法成功 Release Key
--- 最好直接使用 `PressAndReleaseKey` 或在 `PressKey` 和 `ReleaseKey` 之间加上 `Sleep` 延时
+-- 按键操作
 function Gm:pressKey(k)
   if Gm:isKey(k) == false then
     return
@@ -280,7 +503,6 @@ function Gm:clickKey(k)
 end
 
 -- 释放所有可能被按下的按键
--- 不设为私有('_'), 在不依赖 action 的脚本里也会用到
 function Gm:releaseAllKeys()
   -- 释放所有鼠标按键
   for _, k in pairs(Mouse) do
@@ -300,9 +522,35 @@ function Gm:releaseAllKeys()
   end
 end
 
+-- 创建并注册 Action
+function Gm:createAction(params)
+  local act = Action:new(params)
+  table.insert(Gm._actions, act)
+  return act
+end
+
+-- 批量创建并注册 Action
+function Gm:createActions(actionsList)
+  if type(actionsList) == Types.Table then
+    for _, item in ipairs(actionsList) do
+      if getmetatable(item) == Action then
+        table.insert(Gm._actions, item)
+      else
+        Gm:createAction(item)
+      end
+    end
+  end
+  return Gm._actions
+end
+
+-- 创建并注册 Sequence
+function Gm:createSequence(steps, options)
+  local seq = Sequence:new(steps, options)
+  table.insert(Gm._sequences, seq)
+  return seq
+end
+
 -- 注册控制键事件
--- ⚠️：Types.KeyPressed 类型的事件会触发系统快捷键，导致严重的意外问题
--- 所以：只能注册 Types.KeyReleased 类型的事件
 function Gm:onModifierClick(modifier, callback)
   if Gm:isModifierKey(modifier) == false then
     return
@@ -324,17 +572,23 @@ function Gm:onModifierClick(modifier, callback)
   })
 end
 
+-- 注册当前 task 停止时的清理回调
+function Gm:onStop(callback)
+  if type(callback) == Types.Function then
+    table.insert(Gm._stopCallbacks, callback)
+  end
+end
+
 -- 处理 Modifier 按键事件
 function Gm:_progressModifierEvents()
   for _, evt in ipairs(Gm._modifierEvents) do
-    local isPressed = Gm:isModifierPressed(evt.key)
+    local isPressed = IsModifierPressed(evt.key)
     if evt.isPressed ~= isPressed then
       evt.isPressed = isPressed
       if evt.initEventToIgnore then
         -- 重置为 nil(而不是 false) 代表进行过 ignore 处理
         evt.initEventToIgnore = nil
       else
-        -- 从 false 到 true , 代表 modifier 键被按下
         -- 从 false 到 true 再到 false, 代表 modifier 键被按下然后松开，相当于一个 click 事件
         if evt.isPressed == true and evt.type == Types.KeyPressed then
           evt.callback()
@@ -346,40 +600,27 @@ function Gm:_progressModifierEvents()
   end
 end
 
--- 定时器 - 动态设置一个定时触发的动作
--- （借助 action 的 `delay` 属性来模拟定时器的到期触发效果）
-function Gm:setTimeout(name, func, delay)
-  name = tostring(name)
-  if string.len(name) < 1 then
-    return
-  end
-  if type(func) ~= "function" then
-    return
-  end
-  if type(delay) ~= "number" or delay < Config.FrameTime then
-    delay = Config.FrameTime
-  end
-
-  Gm._timers[name] = {
-    func = func,
-    delay = delay,
-    interval = delay,
-  }
-end
-
-function Gm:clearTimeout(name)
-  name = tostring(name)
-  if Gm._timers[name] ~= nil then
-    Gm._timers[name] = nil
-  end
-end
-
-function Gm:_progressTimers()
-  for name, act in pairs(Gm._timers) do
-    Gm:_progressAction(act)
-    if act._isReady then
-      act.func()
-      Gm:clearTimeout(name)
+-- 处理 Sequence 时序步进
+function Gm:_progressSequences()
+  local gts = Gm._timestamp
+  for _, seq in ipairs(Gm._sequences) do
+    if seq._state == "delay" then
+      if gts - seq._timestamp >= seq._currentWait then
+        seq:_startRound()
+      end
+    elseif seq._state == "step" then
+      if gts - seq._timestamp >= seq._currentWait then
+        seq._stepIndex = seq._stepIndex + 1
+        if seq._stepIndex <= #seq.steps then
+          seq:_executeStep(seq._stepIndex)
+        else
+          seq:_finishRound()
+        end
+      end
+    elseif seq._state == "interval" then
+      if gts - seq._timestamp >= seq._currentWait then
+        seq:_startRound()
+      end
     end
   end
 end
@@ -448,8 +689,8 @@ end
 function Gm:_start(task)
   Gm:log("Gm start")
   -- 检查主要属性字段
-  if type(Gm.actions) ~= Types.Table then
-    Gm.actions = {}
+  if type(Gm._actions) ~= Types.Table then
+    Gm._actions = {}
   end
   if type(Gm._state) ~= Types.Table then
     Gm._state = {}
@@ -457,39 +698,49 @@ function Gm:_start(task)
   if type(Gm._modifierEvents) ~= Types.Table then
     Gm._modifierEvents = {}
   end
-  if type(Gm._timers) ~= Types.Table then
-    Gm._timers = {}
+  if type(Gm._sequences) ~= Types.Table then
+    Gm._sequences = {}
+  end
+  if type(Gm._stopCallbacks) ~= Types.Table then
+    Gm._stopCallbacks = {}
   end
 
   Gm._running = true
   Gm._timestamp = 0
 
   task()
-  if next(Gm.actions) or next(Gm._modifierEvents) or next(Gm._timers) then
+  if next(Gm._actions) or next(Gm._modifierEvents) or next(Gm._sequences) then
     Gm:_tickTask()
   end
 end
 
 -- 结束任务
 function Gm:_stop()
-  -- 关闭轮训状态并清理运行时状态
+  -- 关闭轮询状态并清理运行时状态
   Gm._running = false
-  -- 先自动调用 `teardown`
-  if type(Gm.teardown) == Types.Function then
-    Gm.teardown()
+  -- 触发所有已注册的停止清理回调
+  for _, cb in ipairs(Gm._stopCallbacks) do
+    pcall(cb)
   end
+  Gm._stopCallbacks = {}
+
+  -- 停止并清理所有序列（触发 onEnd）
+  for _, seq in ipairs(Gm._sequences) do
+    if seq:isRunning() then
+      seq:stop()
+    end
+  end
+  Gm._sequences = {}
+  Gm._actions = {}
+
   -- 这里不能设为 `0`，`_launchTask` 里需要它来判断离上次 stop 过去了多少时间
   Gm._timestamp = Gm:getCurrentTime()
   -- 这里也不能重置 `_ghubEventToIgnore`，`_launchTask` 需要它来判断是否是同一个事件的不同阶段
   -- Gm._ghubEventToIgnore = nil,
   Gm._modifierEvents = {}
-  Gm._timers = {}
   Gm._state = {}
   -- 这里也不能重置 `_mouseAssignments`，它是一个注册后就不再变动的静态表
   -- Gm._mouseAssignments = {}
-
-  Gm.actions = {}
-  Gm.teardown = function() end
 
   -- 自动释放所有绑定的按键
   Gm:releaseAllKeys()
@@ -498,34 +749,20 @@ end
 
 -- 处理 action 是否 ready 的逻辑
 function Gm:_progressAction(action)
-  -- 每次帧循环先处理 action 的 onEachTick 方法
-  if type(action.onEachTick) == Types.Function then
+  -- 每次帧循环先处理 action 的 onEachTick 方法（如动态计算 interval）
+  if action.onEachTick then
     action.onEachTick(action)
-  end
-
-  if type(action.interval) ~= Types.Number or action.interval < Config.FrameTime then
-    action.interval = Config.FrameTime
-  end
-
-  if type(action.delay) ~= Types.Number or action.delay < 0 then
-    -- delay 小于 0 时逻辑正确但没意义：其它 action 不会延后执行
-    -- 当有这样的需求时，其实是需要别的 action 延后
-    action.delay = 0
   end
 
   local gts = Gm._timestamp
   -- 初始化 action 时间逻辑
-  if type(action._timestamp) ~= Types.Number then
+  if not action._timestamp then
     -- 减去 interval 可确保第一次运行时可被立即执行
-    action._timestamp = gts - action.interval
-
-    if action.delay > 0 then
-      action._timestamp = action._timestamp + action.delay
-    end
+    action._timestamp = gts - action.interval + action.delay
   end
 
   -- 判断 action 是否 ready
-  if action._isReady ~= true and gts - action._timestamp >= action.interval then
+  if not action._isReady and gts - action._timestamp >= action.interval then
     action._isReady = true
   end
 end
@@ -571,12 +808,12 @@ end
 function Gm:_tickTask()
   while Gm:shouldContinue() do
     Gm:_progressTick()
-    -- 先处理监听事件(事件回调里可能对 action 和 Gm._state 做动态调整)
+    -- 1. 先处理监听事件 (事件回调里可能对 action/sequence 和 Gm._state 做动态调整)
     Gm:_progressModifierEvents()
-    -- 再处理定时器(定时器回调里也可能对 action 和 Gm._state 做动态调整)
-    Gm:_progressTimers()
-    -- 然后处理任务列表
-    for _, act in ipairs(Gm.actions) do
+    -- 2. 再处理串行时序执行器 (Sequences 步进)
+    Gm:_progressSequences()
+    -- 3. 然后处理并行周期任务列表
+    for _, act in ipairs(Gm._actions) do
       Gm:_progressAction(act)
       if (act._isReady) then
         Gm:_handleAction(act)
@@ -673,14 +910,21 @@ function Gm:stopForceStand()
   end
 end
 
--- TP 回城
+-- TP 回城 (非阻塞动作序列)
 function Gm:townPortal()
-  -- 等待 12f 以让人物 “站稳” 等前置动作动画完成，才能比较稳定的触发回城
-  Gm:sleep(Timing.MS_12F)
-  Gm:clickKey(Keys.TownPortal)
-  -- 再等待 6f 再重复触发一次以提高 TP 成功率
-  Gm:sleep(Timing.MS_6F)
-  Gm:clickKey(Keys.TownPortal)
+  local tpSeq = Gm:createSequence({
+    {
+      key = Keys.TownPortal,
+      wait = Timing.MS_6F,
+    },
+    {
+      key = Keys.TownPortal,
+    },
+  }, {
+    delay = Timing.MS_12F, -- 等待 12f 以让人物 “站稳” 等前置动作动画完成，才能比较稳定的触发回城
+  })
+  tpSeq:start()
+  return tpSeq
 end
 
 -- 取消 TP 回城(释放技能或进行移动可以取消 TP)
@@ -692,16 +936,34 @@ end
 -- 强制移动 → 等待前摇 → 长按传送技能 → 松开
 function Gm:forceTeleport(k)
   k = k or Keys.ActionBarSkill_3
-  if Gm:isForceMoving() then
-    Gm:sleep(Timing.MS_3F)
-  else
-    Gm:startForceMove()
-    -- 6F 延迟依然会偶尔跳不出来，但延迟更长会显著影响操作手感
-    Gm:sleep(Timing.MS_6F)
-  end
-  Gm:pressKey(k)
-  Gm:sleep(Timing.MS_9F)
-  Gm:releaseKey(k)
+  local prepWait = Gm:isForceMoving() and Timing.MS_3F or Timing.MS_6F
+
+  local teleportSeq = Gm:createSequence({
+    -- 步骤 1: 确保进入强制移动并等待前摇
+    {
+      func = function()
+        if not Gm:isForceMoving() then
+          Gm:startForceMove()
+        end
+      end,
+      wait = prepWait,
+    },
+    -- 步骤 2: 按下传送技能并保持 9 帧
+    {
+      func = function()
+        Gm:pressKey(k)
+      end,
+      wait = Timing.MS_9F,
+    },
+  }, {
+    -- 清理 / 结束: 无论正常完成还是中途宏停止，必定释放技能键，绝不卡键
+    onEnd = function()
+      Gm:releaseKey(k)
+    end,
+  })
+
+  teleportSeq:start()
+  return teleportSeq
 end
 
 --- GHub 事件监听
@@ -728,50 +990,6 @@ function OnEvent(evt, arg)
     -- 其它事件
     Gm:_stop()
   end
-end
-
--- =============================================================================
--- Action 构造器(主要用来帮助了解 Action 有哪些属性字段)
--- 虽然该构造器没啥实际作用(由于可被动态修改，字段检查等逻辑还是放在 `Gm:_progressAction` 里)
--- 但还是推荐通过 `Action.new()` 来创建 action
--- =============================================================================
-local Action = {}
-Action.__index = Action
-
-function Action:new(params)
-  local act      = setmetatable({}, self)
-
-  act._isReady   = false
-  -- `onEachTick` 会在每个帧循环中(检查是否 ready 前)被调用执行
-  -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
-  act.onEachTick = params.onEachTick
-  -- func 会在每次处理 `.key` 之前被调用执行
-  -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
-  -- 也可替代或配合 `.key` 在里面触发各种动作
-  act.func       = params.func
-  if type(act.func) ~= Types.Function then
-    act.func = nil
-  end
-  -- action 绑定的按键，可以是鼠标或键盘按键
-  act.key = params.key
-  if Gm:isKey(act.key) == false then
-    act.key = nil
-  end
-  -- action 执行的时间间隔，单位为 ms
-  act.interval = params.interval
-  -- action 延迟执行的时间，单位为 ms
-  act.delay = params.delay
-  -- `shouldDeferExecution() => true` 时当前 action 进入 “稍后执行” 状态
-  -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
-  act.shouldDeferExecution = params.shouldDeferExecution
-  if type(act.shouldDeferExecution) ~= Types.Function then
-    act.shouldDeferExecution = function() return false end
-  end
-
-  -- 初始化时需要设置为 nil, `0` 会导致后续运行过程中无法判断出是否初始化时的 `0`
-  act._timestamp = nil
-
-  return act
 end
 
 -- =============================================================================
@@ -861,22 +1079,37 @@ local Builds = {
 }
 
 --- WIZ 法师
---- 公用基础 Buff
+--- 公用基础 Buff 序列
 local function wizBuffs()
-    local isForceMoving = Gm:isForceMoving()
-    Gm:startForceStand()
-    Gm:sleep(Timing.MS_3F)
-    -- 魔星(Familiar)
-    Gm:clickKey(Mouse.Left)
-    -- 风暴护甲(Storm Armor)
-    Gm:clickKey(Keys.ActionBarSkill_1)
-    -- 魔法武器(Magic Weapon)
-    Gm:clickKey(Keys.ActionBarSkill_4)
-    Gm:sleep(Timing.MS_3F)
-    Gm:stopForceStand()
-    if isForceMoving then
-      Gm:startForceMove()
-    end
+  local wasForceMoving = false
+  local buffSeq = Gm:createSequence({
+    {
+      func = function()
+        -- 魔星(Familiar)
+        Gm:clickKey(Mouse.Left)
+        -- 风暴护甲(Storm Armor)
+        Gm:clickKey(Keys.ActionBarSkill_1)
+        -- 魔法武器(Magic Weapon)
+        Gm:clickKey(Keys.ActionBarSkill_4)
+      end,
+      wait = Timing.MS_3F,
+    }
+  }, {
+    delay = Timing.MS_3F,
+    onStart = function()
+      wasForceMoving = Gm:isForceMoving()
+      Gm:startForceStand()
+    end,
+    onEnd = function()
+      Gm:stopForceStand()
+      if wasForceMoving then
+        Gm:startForceMove()
+      end
+    end,
+  })
+
+  buffSeq:start()
+  return buffSeq
 end
 -- 火鸟聚能爆破
 function Builds.Wiz:FirebirdExplosiveBlast()
@@ -899,20 +1132,21 @@ function Builds.Wiz:FirebirdExplosiveBlast()
   end)
 
   Gm:onModifierClick(ModifierKeys.Ctrl, function()
+    -- 这里不能直接调用 Gm:forceTeleport，因为会打断引导
     Gm:clickKey(Keys.ActionBarSkill_3)
   end)
 
-  Gm.actions = {
+  Gm:createActions({
     -- 聚能爆破(Explosive Blast)
-    Action:new({
+    {
       interval = Timing.MS_3F,
       func = function()
         if channeling then
           Gm:clickKey(Keys.ActionBarSkill_2)
         end
       end,
-    }),
-    Action:new({
+    },
+    {
       interval = 1000 * 60 * 5,
       func = function()
         wizBuffs()
@@ -920,8 +1154,8 @@ function Builds.Wiz:FirebirdExplosiveBlast()
       shouldDeferExecution = function()
         return channeling == true
       end
-    }),
-  }
+    },
+  })
 
   -- 默认开引导
   startChanneling()
@@ -960,8 +1194,8 @@ function Builds.Wiz:Meteor()
     Gm:forceTeleport()
   end)
 
-  Gm.actions = {
-    Action:new({
+  Gm:createActions({
+    {
       interval = 1000 * 60 * 2.5,
       func = function()
         wizBuffs()
@@ -969,17 +1203,17 @@ function Builds.Wiz:Meteor()
       shouldDeferExecution = function()
         return inMeteor == true
       end
-    }),
+    },
     -- Frost Nova/Black Hole
-    Action:new({
+    {
       -- 随缘自动触发
       interval = 1000 * 2.5,
       key = Keys.ActionBarSkill_2,
       shouldDeferExecution = function()
         return inMeteor == false
       end
-    }),
-  }
+    },
+  })
 
   Gm:startForceMove()
 end
@@ -1009,10 +1243,10 @@ function Builds.DH:DevouringStrafe()
   end
   Gm:onModifierClick(ModifierKeys.Alt, toggleStrafe)
 
-  Gm.actions = {
+  Gm:createActions({
     -- 战宠(Companion)
     -- 带翅膀(Shadow Power)戒律(Discipline)会不够, 宠物通用性和综合收益最好
-    Action:new({
+    {
       interval = 1000,
       delay = 2000,
       func = function()
@@ -1020,9 +1254,9 @@ function Builds.DH:DevouringStrafe()
           Gm:clickKey(Keys.ActionBarSkill_1)
         end
       end
-    }),
+    },
     -- 蓄势待发(Preparation)
-    Action:new({
+    {
       interval = Timing.MS_3F,
       delay = 7500,
       func = function()
@@ -1030,27 +1264,27 @@ function Builds.DH:DevouringStrafe()
           Gm:clickKey(Keys.ActionBarSkill_2)
         end
       end
-    }),
+    },
     -- 烟雾(Smoke Screen)
-    Action:new({
+    {
       interval = 1250,
       func = function()
         if strafing then
           Gm:clickKey(Keys.ActionBarSkill_3)
         end
       end
-    }),
+    },
     -- 复仇(Vengeance)
-    Action:new({
+    {
       interval = Timing.MS_3F,
       func = function()
         if strafing then
           Gm:clickKey(Keys.ActionBarSkill_4)
         end
       end
-    }),
+    },
     -- 追踪箭(Hungering Arrow)
-    Action:new({
+    {
       -- 高于 10F 在割草时容易掉动能
       interval = Timing.MS_9F,
       delay = Timing.MS_20F,
@@ -1059,34 +1293,47 @@ function Builds.DH:DevouringStrafe()
           Gm:clickKey(Mouse.Left)
         end
       end
-    })
-  }
+    }
+  })
 
   toggleStrafe()
 end
 
 -- 三刀(扫射)
 function Builds.DH:ImpaleStrafe()
-  --  切换扫射状态
+  -- 扫射状态与启动序列
   local strafing = false
+  local startStrafeSeq = Gm:createSequence({
+    {
+      func = function()
+        -- 每次状态切换都重新激活一次翅膀(Shadow Power)和飞刀(Impale)
+        Gm:clickKey(Keys.ActionBarSkill_1)
+        Gm:clickKey(Keys.ActionBarSkill_3)
+      end,
+      wait = Timing.MS_6F,
+    },
+    {
+      func = function()
+        Gm:pressKey(Mouse.Right)
+        strafing = true
+      end,
+    },
+  })
+
   local function toggleStrafe()
-    if strafing then
+    if strafing or startStrafeSeq:isRunning() then
       strafing = false
+      startStrafeSeq:stop()
       Gm:releaseKey(Mouse.Right)
     else
-      strafing = true
-      -- 每次状态切换都重新激活一次翅膀(Shadow Power)和飞刀(Impale)
-      Gm:clickKey(Keys.ActionBarSkill_1)
-      Gm:clickKey(Keys.ActionBarSkill_3)
-      Gm:sleep(Timing.MS_6F)
-      Gm:pressKey(Mouse.Right)
+      startStrafeSeq:start()
     end
   end
   Gm:onModifierClick(ModifierKeys.Ctrl, toggleStrafe)
 
-  Gm.actions = {
+  Gm:createActions({
     -- 烟雾(Smoke Screen - Vanishing Powder)
-    Action:new({
+    {
       interval = 1000,
       delay = 2000,
       func = function()
@@ -1094,18 +1341,18 @@ function Builds.DH:ImpaleStrafe()
           Gm:clickKey(Keys.ActionBarSkill_2)
         end
       end
-    }),
+    },
     -- 复仇(Vengeance)
-    Action:new({
+    {
       interval = Timing.MS_3F,
       func = function()
         if strafing then
           Gm:clickKey(Keys.ActionBarSkill_4)
         end
       end
-    }),
+    },
     -- 左键
-    Action:new({
+    {
       interval = Timing.MS_20F,
       delay = Timing.MS_12F,
       func = function()
@@ -1113,8 +1360,8 @@ function Builds.DH:ImpaleStrafe()
           Gm:clickKey(Mouse.Left)
         end
       end
-    }),
-  }
+    },
+  })
 
   toggleStrafe()
 end
@@ -1144,32 +1391,49 @@ function Builds.DH:NatalyaSpikeTrap()
     end
   end)
 
+  -- 拉怪连招序列
+  local pullSequenceState = {}
+  local pullCombo = Gm:createSequence({
+    {
+      func = function()
+        Gm:clickKey(Mouse.Right)
+        Gm:clickKey(Mouse.Right)
+      end,
+      wait = Timing.MS_12F
+    },
+    {
+      func = function()
+        Gm:clickKey(Mouse.Left)
+        Gm:clickKey(Keys.ActionBarSkill_1)
+      end,
+      wait = Timing.MS_12F
+    },
+  }, {
+    delay = Timing.MS_6F,
+    onStart = function()
+      pullSequenceState.isForceMoving = Gm:isForceMoving()
+      pullSequenceState.isForceStanding = Gm:isForceStanding()
+      pullSequenceState.isSpikeTrapMode = spikeTrapMode
+
+      if spikeTrapMode then
+        stopSpikeTrap()
+      end
+      Gm:startForceStand()
+    end,
+    onEnd = function()
+      if pullSequenceState.isSpikeTrapMode then
+        startSpikeTrap()
+      elseif pullSequenceState.isForceMoving then
+        Gm:startForceMove()
+      elseif not pullSequenceState.isForceStanding then
+        Gm:stopForceStand()
+      end
+    end
+  })
+
   -- 拉怪
   Gm:onModifierClick(ModifierKeys.Ctrl, function()
-    local isForceMoving = Gm:isForceMoving()
-    local isForceStanding = Gm:isForceStanding()
-    local isSpikeTrapMode = spikeTrapMode
-
-    if isSpikeTrapMode then
-      stopSpikeTrap()
-    end
-
-    Gm:startForceStand()
-    Gm:sleep(Timing.MS_6F)
-    Gm:clickKey(Mouse.Right)
-    Gm:clickKey(Mouse.Right)
-    Gm:sleep(Timing.MS_12F)
-    Gm:clickKey(Mouse.Left)
-    Gm:clickKey(Keys.ActionBarSkill_1)
-    Gm:sleep(Timing.MS_12F)
-
-    if isSpikeTrapMode then
-      startSpikeTrap()
-    elseif isForceMoving then
-      Gm:startForceMove()
-    elseif not isForceStanding then
-      Gm:stopForceStand()
-    end
+    pullCombo:toggle()
   end)
   -- free move
   Gm:onModifierClick(ModifierKeys.Shift, function()
@@ -1177,15 +1441,15 @@ function Builds.DH:NatalyaSpikeTrap()
     Gm:stopForceMove()
   end)
 
-  Gm.actions = {
+  Gm:createActions({
     -- 战宠(Companion)
-    Action:new({
+    {
       interval = 1000,
       delay = 5000,
       key = Keys.ActionBarSkill_3,
-    }),
+    },
     -- 烟雾弹(Smoke Screen)
-    Action:new({
+    {
       key = Keys.ActionBarSkill_2,
       onEachTick = function(sf)
         if spikeTrapMode then
@@ -1194,15 +1458,15 @@ function Builds.DH:NatalyaSpikeTrap()
           sf.interval = 2500
         end
       end
-    }),
+    },
     -- 复仇(Vengeance)
-    Action:new({
+    {
       interval = Timing.MS_3F,
       delay = 1000,
       key = Keys.ActionBarSkill_4,
-    }),
+    },
     -- 闪避射击(Evasive Fire) + 铁蒺藜(Caltrops)
-    Action:new({
+    {
       interval = 1500,
       func = function()
         if spikeTrapMode then
@@ -1213,112 +1477,144 @@ function Builds.DH:NatalyaSpikeTrap()
       shouldDeferExecution = function()
         return spikeTrapMode == false
       end
-    }),
-  }
+    },
+  })
 
-  -- initial
-  Gm:pressKey(Mouse.Right)
-  Gm:sleep(1000)
-  Gm:releaseKey(Mouse.Right)
-  Gm:startForceMove()
+  -- 初始铺陷阱序列 (非阻塞)
+  local initTrapSeq = Gm:createSequence({
+    {
+      wait = 1000,
+    },
+  }, {
+    onStart = function()
+      Gm:pressKey(Mouse.Right)
+    end,
+    onEnd = function()
+      Gm:releaseKey(Mouse.Right)
+      Gm:startForceMove()
+    end,
+  })
+  initTrapSeq:start()
 end
 
 --- MONK 武僧
 -- 散件敲钟(圣化)
 function Builds.Monk:SanctLoDWoL()
-  Gm:onModifierClick(
-    ModifierKeys.Alt,
-    function()
+  -- 74 帧敲钟连招序列
+  local wolCombo = Gm:createSequence({
+    -- 开禅定
+    { key = Keys.ActionBarSkill_4, wait = Timing.MS_6F },
+    -- 再敲两钟
+    { key = Mouse.Left,            wait = Timing.MS_6F },
+    { key = Mouse.Left,            wait = Timing.MS_1F * 28 },
+    -- 再两飓风破
+    { key = Mouse.Right,           wait = Timing.MS_1F * 28 },
+    { key = Mouse.Right,           wait = Timing.MS_6F },
+  }, {
+    onStart = function()
       Gm:startForceStand()
-      -- 开禅定
-      Gm:clickKey(Keys.ActionBarSkill_4)
-      Gm:sleep(Timing.MS_6F)
-      -- 再敲两钟
-      Gm:clickKey(Mouse.Left)
-      Gm:sleep(Timing.MS_6F)
-      Gm:clickKey(Mouse.Left)
-      Gm:sleep(Timing.MS_1F * 28)
-      -- 再两飓风破
-      Gm:clickKey(Mouse.Right)
-      Gm:sleep(Timing.MS_1F * 28)
-      Gm:clickKey(Mouse.Right)
-      Gm:sleep(Timing.MS_6F)
-
+    end,
+    onEnd = function()
       Gm:stopForceStand()
-    end
-  )
+    end,
+  })
+
+  Gm:onModifierClick(ModifierKeys.Alt, function()
+    wolCombo:toggle()
+  end)
 
   -- 幻身决动态 interval
   local allyIter = Gm:makeCycleIterator({ 3000, 1000, 1000 })
   -- 灵光悟动态 interval
   local epiphanyIter = Gm:makeCycleIterator({ 4000, 1000, 1000, 1000, 1000 })
   -- 定义动作列表, 开始循环
-  Gm.actions = {
+  Gm:createActions({
     -- 幻身诀
-    Action:new({
+    {
       key = Keys.ActionBarSkill_1,
       delay = 3000,
       func = function(sf)
         sf.interval = allyIter.next()
       end
-    }),
+    },
     -- 黑人灵光悟
-    Action:new({
+    {
       func = function(sf)
         Gm:clickKey(Keys.ActionBarSkill_3)
         sf.interval = epiphanyIter.next()
       end
-    }),
-  }
+    },
+  })
 end
 
 --- Crus 圣教军
 -- 正义天拳
 function Builds.Crus:AoVFist()
+  -- 回城减伤序列 (停止移动 -> 站稳 12F -> 按 T -> 6F 补按 T -> 保持减伤读条 -> 恢复移动)
+  local tpSequence = Gm:createSequence({
+    {
+      key = Keys.TownPortal,
+      wait = Timing.MS_6F,
+    },
+    {
+      key = Keys.TownPortal,
+      wait = Timing.TownPortal,
+    },
+  }, {
+    delay = Timing.MS_12F,
+    onStart = function()
+      Gm:stopForceMove()
+    end,
+    onEnd = function()
+      Gm:startForceMove()
+    end,
+  })
+  Gm:onModifierClick(ModifierKeys.Shift, function()
+    tpSequence:toggle()
+  end)
+
   -- 强制移动切换
   Gm:onModifierClick(ModifierKeys.Alt, function()
     if Gm:isForceMoving() then
       Gm:stopForceMove()
-      Gm:clearTimeout('tp')
+      tpSequence:stop()
     else
       Gm:startForceMove()
     end
   end)
-  -- 回城减伤
-  local function townPortal()
-    Gm:stopForceMove()
-    Gm:townPortal()
-    Gm:setTimeout('tp', function()
-      Gm:startForceMove()
-    end, Timing.TownPortal)
-  end
-  Gm:onModifierClick(ModifierKeys.Shift, townPortal)
 
-  -- 跑马
-  local function beforeSteedCharge()
-    Gm:stopForceMove()
-    Gm:clickKey(Keys.ActionBarSkill_1)
-    Gm:clickKey(Keys.ActionBarSkill_2)
-    Gm:clickKey(Keys.ActionBarSkill_4)
-    Gm:sleep(Timing.MS_6F)
-  end
-  local function steedCharge()
-    Gm:clickKey(Keys.ActionBarSkill_3)
-    Gm:sleep(Timing.MS_3F)
-    Gm:startForceMove()
-  end
+  -- 跑马序列
+  local steedSequence = Gm:createSequence({
+    {
+      func = function()
+        Gm:clickKey(Keys.ActionBarSkill_1)
+        Gm:clickKey(Keys.ActionBarSkill_2)
+        Gm:clickKey(Keys.ActionBarSkill_4)
+      end,
+      wait = Timing.MS_6F
+    },
+    {
+      key = Keys.ActionBarSkill_3,
+      wait = Timing.MS_3F
+    },
+  }, {
+    onStart = function()
+      Gm:stopForceMove()
+    end,
+    onEnd = function()
+      Gm:startForceMove()
+    end
+  })
   Gm:onModifierClick(ModifierKeys.Ctrl, function()
-    beforeSteedCharge()
-    steedCharge()
+    steedSequence:start()
   end)
 
   -- 宏停止时，清理可能存在回城状态
-  Gm.teardown = function()
+  Gm:onStop(function()
     Gm:cancelTownPortal()
-  end
+  end)
 
-  beforeSteedCharge()
-  steedCharge()
+  steedSequence:start()
 end
 
 --- Nec 死灵
@@ -1357,9 +1653,9 @@ function Builds.Nec:RathmaAotD()
     Gm:forceTeleport()
   end)
 
-  Gm.actions = {
+  Gm:createActions({
     -- Command Skeletons
-    Action:new({
+    {
       key = Keys.ActionBarSkill_1,
       onEachTick = function(sf)
         if siphoning then
@@ -1368,9 +1664,9 @@ function Builds.Nec:RathmaAotD()
           sf.interval = 2500
         end
       end
-    }),
+    },
     -- Army of the Dead
-    Action:new({
+    {
       delay = 200,
       interval = Timing.MS_1F * 40,
       func = function()
@@ -1378,9 +1674,9 @@ function Builds.Nec:RathmaAotD()
           Gm:clickKey(Keys.ActionBarSkill_4)
         end
       end
-    }),
+    },
     -- Bone Armor
-    Action:new({
+    {
       delay = 100,
       interval = 1000,
       func = function()
@@ -1388,8 +1684,8 @@ function Builds.Nec:RathmaAotD()
           Gm:clickKey(Mouse.Left)
         end
       end
-    }),
-  }
+    },
+  })
 
   -- initial
   Gm:startForceMove()
@@ -1430,9 +1726,9 @@ function Builds.Nec:DeathNova()
     Gm:forceTeleport()
   end)
 
-  Gm.actions = {
+  Gm:createActions({
     -- Bone Armor
-    Action:new({
+    {
       delay = 100,
       interval = 1000,
       func = function()
@@ -1440,8 +1736,8 @@ function Builds.Nec:DeathNova()
           Gm:clickKey(Keys.ActionBarSkill_2)
         end
       end
-    }),
-  }
+    },
+  })
 
   -- initial
   Gm:startForceMove()
