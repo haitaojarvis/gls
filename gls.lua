@@ -166,10 +166,6 @@ function Action:new(params)
   act._isReady = false
   act._timestamp = nil
 
-  -- `onEachTick` 会在每个帧循环中(检查是否 ready 前)被调用执行
-  -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
-  act.onEachTick = type(params.onEachTick) == Types.Function and params.onEachTick or nil
-
   -- func 会在每次处理 `.key` 之前被调用执行
   -- 当前 action 会以第一个参数传给它，用来访问或动态修改当前 action 的属性
   -- 也可替代或配合 `.key` 在里面触发各种动作
@@ -380,15 +376,12 @@ function Gm:log(...)
     return
   end
 
-  local msg = "[Gm] "
-  local args = table.pack(...)
-  for i = 1, args.n do
-    local v = args[i]
-    msg = msg .. " " .. tostring(v)
+  local args = { ... }
+  for i = 1, #args do
+    args[i] = tostring(args[i])
   end
 
-  msg = msg .. "\n"
-  OutputLogMessage(msg)
+  OutputLogMessage("[Gm] " .. table.concat(args, " ") .. "\n")
 end
 
 function Gm:getCurrentTime()
@@ -716,6 +709,12 @@ end
 
 -- 结束任务
 function Gm:_stop()
+  -- 统一在此记录导致停止的按键：无论经哪条路径停止宏，只要物理按键仍处于按下状态就设置忽略标志，
+  -- 防止后续 Released 阶段误触发关联任务进入死循环（对按住中键超过冷却时间再松开的场景尤为关键）
+  -- 注：仅在宏运行中(_running)才记录，避免空闲时按中键触发生活脚本的功能被误吞
+  if Gm._running and IsMouseButtonPressed(Mouse.Middle) then
+    Gm._ghubEventToIgnore = Mouse.Middle
+  end
   -- 关闭轮询状态并清理运行时状态
   Gm._running = false
   -- 触发所有已注册的停止清理回调
@@ -749,11 +748,6 @@ end
 
 -- 处理 action 是否 ready 的逻辑
 function Gm:_progressAction(action)
-  -- 每次帧循环先处理 action 的 onEachTick 方法（如动态计算 interval）
-  if action.onEachTick then
-    action.onEachTick(action)
-  end
-
   local gts = Gm._timestamp
   -- 初始化 action 时间逻辑
   if not action._timestamp then
@@ -1039,7 +1033,7 @@ local function SalvageItems()
 
   for i = 0, rows * cols - 1 do
     -- 计算处于第几行(yp)
-    local rp = math.floor(i / cols)
+    local rp = math_floor(i / cols)
     -- 计算处于第几列(xp)
     local cp = i % cols
     Gm:moveMouseRef(xp + cp * w, yp + rp * h)
@@ -1368,17 +1362,25 @@ end
 
 --- 娜塔亚陷阱
 function Builds.DH:NatalyaSpikeTrap()
+  -- 烟雾弹动作（根据模式动态调整 interval）
+  local smokeAction = Gm:createAction({
+    key = Keys.ActionBarSkill_2,
+    interval = 2500,
+  })
+
   -- 自动放陷阱
   local spikeTrapMode = false
   local function startSpikeTrap()
     Gm:startForceStand()
     Gm:pressKey(Mouse.Right)
     spikeTrapMode = true
+    smokeAction.interval = 1000
   end
   local function stopSpikeTrap()
     Gm:stopForceStand()
     Gm:releaseKey(Mouse.Right)
     spikeTrapMode = false
+    smokeAction.interval = 2500
   end
   Gm:onModifierClick(ModifierKeys.Alt, function()
     if spikeTrapMode then
@@ -1447,17 +1449,6 @@ function Builds.DH:NatalyaSpikeTrap()
       interval = 1000,
       delay = 5000,
       key = Keys.ActionBarSkill_3,
-    },
-    -- 烟雾弹(Smoke Screen)
-    {
-      key = Keys.ActionBarSkill_2,
-      onEachTick = function(sf)
-        if spikeTrapMode then
-          sf.interval = 1000
-        else
-          sf.interval = 2500
-        end
-      end
     },
     -- 复仇(Vengeance)
     {
@@ -1620,16 +1611,24 @@ end
 --- Nec 死灵
 -- 拉斯玛亡者大军
 function Builds.Nec:RathmaAotD()
+  -- 号令骸骨动作（根据虹吸状态动态调整 interval）
+  local skeletonAction = Gm:createAction({
+    key = Keys.ActionBarSkill_1,
+    interval = 2500,
+  })
+
   -- Siphon Blood
   local siphoning = false;
   local function startSiphon()
     Gm:stopForceMove()
     Gm:pressKey(Mouse.Right)
     siphoning = true
+    skeletonAction.interval = 1500
   end
   local function stopSiphon()
     Gm:releaseKey(Mouse.Right)
     siphoning = false
+    skeletonAction.interval = 2500
   end
   Gm:onModifierClick(ModifierKeys.Alt, function()
     if siphoning then
@@ -1654,17 +1653,6 @@ function Builds.Nec:RathmaAotD()
   end)
 
   Gm:createActions({
-    -- Command Skeletons
-    {
-      key = Keys.ActionBarSkill_1,
-      onEachTick = function(sf)
-        if siphoning then
-          sf.interval = 1500
-        else
-          sf.interval = 2500
-        end
-      end
-    },
     -- Army of the Dead
     {
       delay = 200,

@@ -146,7 +146,7 @@ end)
 
 - 关于 Action 与流水线创建
   * 推荐使用工厂方法 `Gm:createActions({ ... })` 或 `Gm:createAction(params)` 进行声明式创建
-  * 支持属性：`interval`（执行间隔）、`delay`（首次延时）、`key`（按键）、`func`（执行函数）、`onEachTick`（每帧动态计算）、`shouldDeferExecution`（暂缓执行）
+  * 支持属性：`interval`（执行间隔）、`delay`（首次延时）、`key`（按键）、`func`（执行函数）、`shouldDeferExecution`（暂缓执行）
 
 - 关于 `action:shouldDeferExecution`
   * 返回 `true` 表示当前 action 进入 “稍后再试” 状态
