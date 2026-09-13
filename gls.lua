@@ -211,8 +211,10 @@ function Sequence:new(steps, options)
   options = type(options) == Types.Table and options or {}
 
   seq.loop = options.loop == true
-  seq.interval = options.interval or 0 -- 循环间隔，支持 number 或 function/iter
-  seq.delay = options.delay or 0       -- 首次启动延时
+  -- 循环间隔，支持 number 或 function/iter
+  seq.interval = options.interval or 0
+  -- 首次启动延时
+  seq.delay = options.delay or 0
   seq.onStart = options.onStart
   seq.onEnd = options.onEnd
   seq.onRoundStart = options.onRoundStart
@@ -543,6 +545,38 @@ function Gm:createSequence(steps, options)
   return seq
 end
 
+-- 创建循环迭代器
+-- (一般用于设置不能无缝 CD 技能的 `interval`)
+function Gm:createCycleIter(tl)
+  if type(tl) ~= Types.Table then
+    tl = {}
+  end
+
+  local tlLength = #tl
+  local curIndex = 0
+
+  local function next()
+    curIndex = curIndex + 1
+    if curIndex > tlLength then
+      curIndex = 1
+    end
+
+    return tl[curIndex]
+  end
+
+  local iter = {
+    next = next,
+    length = function()
+      return tlLength
+    end,
+    reset = function()
+      curIndex = 0
+    end,
+  }
+
+  return iter
+end
+
 -- 注册控制键事件
 function Gm:onModifierClick(modifier, callback)
   if Gm:isModifierKey(modifier) == false then
@@ -816,38 +850,6 @@ function Gm:_tickTask()
   end
 end
 
--- 生成环形迭代器
--- (一般用于设置不能无缝 CD 技能的 `interval`)
-function Gm:makeCycleIterator(tl)
-  if type(tl) ~= Types.Table then
-    tl = {}
-  end
-
-  local tlLength = #tl
-  local curIndex = 0
-
-  local function next()
-    curIndex = curIndex + 1
-    if curIndex > tlLength then
-      curIndex = 1
-    end
-
-    return tl[curIndex]
-  end
-
-  local iter = {
-    next = next,
-    length = function()
-      return tlLength
-    end,
-    reset = function()
-      curIndex = 0
-    end,
-  }
-
-  return iter
-end
-
 --- 鼠标坐标归一化转换器 (Coordinate Normalizer)
 -- 将基于基准参考分辨率 (1440x900) 的逻辑坐标转换为对应 OS 平台的鼠标移动指令
 -- macOS: 调用 MoveMouseToVirtual 以兼容虚拟坐标与多屏
@@ -905,19 +907,30 @@ function Gm:stopForceStand()
 end
 
 -- TP 回城 (非阻塞动作序列)
-function Gm:townPortal()
+function Gm:townPortal(autoCancel)
   local tpSeq = Gm:createSequence({
     {
       key = Keys.TownPortal,
       wait = Timing.MS_6F,
     },
     {
+      -- 等待 6f 再重复触发一次以提高 TP 成功率
       key = Keys.TownPortal,
+      wait = autoCancel and Timing.TownPortal or 0,
     },
   }, {
-    delay = Timing.MS_12F, -- 等待 12f 以让人物 “站稳” 等前置动作动画完成，才能比较稳定的触发回城
+    -- 等待 12f 以让人物 “站稳” 等前置动作动画完成，才能比较稳定的触发回城
+    delay = Timing.MS_12F,
+    onStart = function()
+      Gm:stopForceMove()
+    end,
+    onEnd = function()
+      if autoCancel then
+        Gm:startForceMove()
+      end
+    end,
   })
-  tpSeq:start()
+
   return tpSeq
 end
 
@@ -987,10 +1000,8 @@ function OnEvent(evt, arg)
 end
 
 -- =============================================================================
---  D3 游戏脚本部分
+--  D3 生活脚本
 -- =============================================================================
-
---- 生活脚本
 -- 背包信息设置，主要用于物品拆除脚本
 -- 根据物品携带习惯，可使用背包格子数量为 6行 * 8列 = 48 个
 local Inventory = {
@@ -1062,8 +1073,9 @@ Gm:setMouseAssignment(Mouse.Middle, function()
   end
 end)
 
-
---- 战斗脚本
+-- =============================================================================
+--  D3 战斗脚本
+-- =============================================================================
 local Builds = {
   DH = {},
   Wiz = {},
@@ -1515,9 +1527,9 @@ function Builds.Monk:SanctLoDWoL()
   end)
 
   -- 幻身决动态 interval
-  local allyIter = Gm:makeCycleIterator({ 3000, 1000, 1000 })
+  local allyIter = Gm:createCycleIter({ 3000, 1000, 1000 })
   -- 灵光悟动态 interval
-  local epiphanyIter = Gm:makeCycleIterator({ 4000, 1000, 1000, 1000, 1000 })
+  local epiphanyIter = Gm:createCycleIter({ 4000, 1000, 1000, 1000, 1000 })
   -- 定义动作列表, 开始循环
   Gm:createActions({
     -- 幻身诀
@@ -1541,25 +1553,8 @@ end
 --- Crus 圣教军
 -- 正义天拳
 function Builds.Crus:AoVFist()
-  -- 回城减伤序列 (停止移动 -> 站稳 12F -> 按 T -> 6F 补按 T -> 保持减伤读条 -> 恢复移动)
-  local tpSequence = Gm:createSequence({
-    {
-      key = Keys.TownPortal,
-      wait = Timing.MS_6F,
-    },
-    {
-      key = Keys.TownPortal,
-      wait = Timing.TownPortal,
-    },
-  }, {
-    delay = Timing.MS_12F,
-    onStart = function()
-      Gm:stopForceMove()
-    end,
-    onEnd = function()
-      Gm:startForceMove()
-    end,
-  })
+  -- 回城减伤
+  local tpSequence = Gm:townPortal(true)
   Gm:onModifierClick(ModifierKeys.Shift, function()
     tpSequence:toggle()
   end)
@@ -1568,7 +1563,6 @@ function Builds.Crus:AoVFist()
   Gm:onModifierClick(ModifierKeys.Alt, function()
     if Gm:isForceMoving() then
       Gm:stopForceMove()
-      tpSequence:stop()
     else
       Gm:startForceMove()
     end
@@ -1732,16 +1726,16 @@ function Builds.Nec:DeathNova()
 end
 
 -- =============================================================================
--- #鼠标按键功能绑定#
+-- 鼠标按键功能绑定
 -- =============================================================================
 -- DPI 切换键
 Gm:setMouseAssignment(6, function()
-  Builds.DH:DevouringStrafe()
+  Builds.Crus:AoVFist()
 end)
 
 -- 侧后键
 Gm:setMouseAssignment(4, function()
-  Builds.DH:NatalyaSpikeTrap()
+  Builds.Nec:RathmaAotD()
 end)
 
 -- 侧前键
